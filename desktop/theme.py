@@ -18,14 +18,14 @@ ACCENT_B = "rgba(139, 109, 255, 0.50)"     # violet
 STYLESHEET = f"""
 * {{ font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif; font-size: 10pt; color: #eef2ff; }}
 QMainWindow, QDialog {{ background: transparent; }}
-QDialog {{ background: rgba(22, 26, 46, 0.96); }}
+QDialog {{ background: rgba(22, 26, 46, 0.90); }}
 QWidget#glassRoot {{ background: transparent; }}
 QLabel {{ background: transparent; }}
 QLabel#title {{ font-size: 21pt; font-weight: 600; letter-spacing: 0.5px; }}
 QLabel#subtitle {{ color: rgba(238, 242, 255, 0.62); }}
-QLabel#status {{ background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 12px; padding: 10px 14px; font-size: 11pt; }}
+QLabel#status {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(255, 255, 255, 0.14), stop:1 rgba(255, 255, 255, 0.05)); border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 12px; padding: 10px 14px; font-size: 11pt; }}
 
-QGroupBox {{ background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.17); border-radius: 16px;
+QGroupBox {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(255, 255, 255, 0.14), stop:1 rgba(255, 255, 255, 0.04)); border: 1px solid rgba(255, 255, 255, 0.24); border-radius: 16px;
             margin-top: 18px; padding: 16px 14px 12px 14px; }}
 QGroupBox::title {{ subcontrol-origin: margin; left: 18px; padding: 0 8px; color: rgba(238, 242, 255, 0.85); font-weight: 600; }}
 
@@ -45,30 +45,29 @@ QPushButton#primary {{ font-weight: 600; border: 1px solid rgba(255, 255, 255, 0
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(60, 200, 225, 0.75), stop:1 rgba(110, 120, 255, 0.70)); }}
 QPushButton#primary:hover {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(90, 220, 240, 0.9), stop:1 rgba(130, 140, 255, 0.85)); }}
 QPushButton#primary:disabled {{ background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.10); }}
-QPushButton#rowbtn {{ padding: 3px 10px; margin: 2px 4px; min-height: 0; }}
+QPushButton#rowbtn {{ padding: 4px 12px; margin: 4px 6px; min-height: 0; border-radius: 9px; }}
 QPushButton#danger {{ background: rgba(255, 95, 120, 0.30); border-color: rgba(255, 140, 160, 0.55); }}
 QPushButton#danger:hover {{ background: rgba(255, 95, 120, 0.50); }}
 QPushButton#danger:disabled {{ background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.08); }}
 
-QLineEdit, QSpinBox, QComboBox {{ background: rgba(8, 12, 28, 0.38); border: 1px solid rgba(255, 255, 255, 0.17); border-radius: 9px; padding: 6px 10px;
+QLineEdit, QSpinBox, QComboBox {{ background: rgba(8, 12, 28, 0.26); border: 1px solid rgba(255, 255, 255, 0.17); border-radius: 9px; padding: 6px 10px;
     selection-background-color: rgba(110, 168, 255, 0.55); }}
 QLineEdit:focus, QSpinBox:focus, QComboBox:focus, QPlainTextEdit:focus {{ border: 1px solid rgba(120, 210, 255, 0.75); }}
-QSpinBox::up-button, QSpinBox::down-button {{ width: 16px; border: none; background: transparent; }}
-QComboBox::drop-down {{ border: none; width: 24px; }}
+QSpinBox::up-button, QSpinBox::down-button {{ width: 0; border: none; background: transparent; }}     /* type the number, or use the wheel / arrow keys */
 QComboBox QAbstractItemView {{ background: rgba(26, 30, 52, 0.98); border: 1px solid rgba(255, 255, 255, 0.2); selection-background-color: rgba(110, 168, 255, 0.45); outline: none; }}
-QPlainTextEdit {{ background: rgba(8, 12, 28, 0.42); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 14px; padding: 8px;
+QPlainTextEdit {{ background: rgba(8, 12, 28, 0.30); border: 1px solid rgba(255, 255, 255, 0.20); border-radius: 14px; padding: 8px;
     selection-background-color: rgba(110, 168, 255, 0.55); }}
 
-QTableWidget {{ background: rgba(8, 12, 28, 0.34); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 14px; gridline-color: rgba(255, 255, 255, 0.05);
+QTableWidget {{ background: rgba(8, 12, 28, 0.22); border: 1px solid rgba(255, 255, 255, 0.20); border-radius: 14px; gridline-color: rgba(255, 255, 255, 0.07);
     alternate-background-color: rgba(255, 255, 255, 0.03); outline: none; }}
 QTableWidget::item {{ padding: 4px 6px; }}
 QTableWidget::item:selected {{ background: rgba(110, 168, 255, 0.34); color: white; }}
 QHeaderView {{ background: transparent; }}
-QHeaderView::section {{ background: rgba(255, 255, 255, 0.09); padding: 7px 8px; border: none; border-bottom: 1px solid rgba(255, 255, 255, 0.16); color: rgba(238, 242, 255, 0.88); }}
+QHeaderView::section {{ background: rgba(255, 255, 255, 0.12); padding: 7px 8px; border: none; border-bottom: 1px solid rgba(255, 255, 255, 0.16); color: rgba(238, 242, 255, 0.88); }}
 QTableCornerButton::section {{ background: transparent; border: none; }}
 
 QCheckBox {{ spacing: 9px; background: transparent; }}
-QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(8, 12, 28, 0.35); }}
+QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.40); background: rgba(255, 255, 255, 0.10); }}
 QCheckBox::indicator:checked {{ border-color: rgba(255, 255, 255, 0.6);
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(60, 200, 225, 0.9), stop:1 rgba(110, 120, 255, 0.9)); }}
 
@@ -81,6 +80,23 @@ QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
 QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
 QToolTip {{ background: rgba(26, 30, 52, 0.97); color: #eef2ff; border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 8px; padding: 6px; }}
 """
+
+
+def apply(app):
+    """Style the whole application: Fusion look, a palette whose 'base' colours are see-through (so scroll areas, tables and
+    text boxes show the glass behind them instead of painting an opaque box), and the stylesheet."""
+    from PySide6.QtGui import QPalette
+    app.setStyle("Fusion")
+    pal = QPalette(app.palette())
+    clear = QColor(0, 0, 0, 0)
+    for role in (QPalette.Base, QPalette.AlternateBase, QPalette.Window, QPalette.Button):
+        pal.setColor(role, clear)
+    for role in (QPalette.Text, QPalette.WindowText, QPalette.ButtonText):
+        pal.setColor(role, QColor("#eef2ff"))
+    pal.setColor(QPalette.Highlight, QColor(110, 168, 255, 140))
+    pal.setColor(QPalette.PlaceholderText, QColor(238, 242, 255, 110))
+    app.setPalette(pal)
+    app.setStyleSheet(STYLESHEET)
 
 
 class GlassRoot(QWidget):
@@ -98,7 +114,7 @@ class GlassRoot(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         w, h = self.width(), self.height()
-        a = 0.62 if self.backdrop else 1.0                      # tint strength: lighter over a real blur
+        a = 0.55 if self.backdrop else 0.92                      # tint strength: lighter over a real blur
         base = QLinearGradient(0, 0, w, h)
         base.setColorAt(0.0, QColor(18, 24, 52, int(235 * a)))
         base.setColorAt(0.55, QColor(24, 34, 70, int(225 * a)))

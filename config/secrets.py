@@ -26,8 +26,8 @@ password = ""           # Enter your password in the quotes
 ## Artificial Intelligence (optional)
 # Master switch. Turn AI on to let the tool draft answers to application questions
 # and pull the required skills out of job descriptions. It needs either a paid API
-# key or a local model server, so it stays off by default.
-use_AI = False                           # True or False (case-sensitive)
+# key or a local model server. With no key saved the AI part is simply skipped.
+use_AI = True                            # True or False (case-sensitive). With no API key saved, the AI part is simply skipped.
 
 # Which AI service to use. The tool reaches all of them through LangChain, so this
 # one setting is usually all you change:

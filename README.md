@@ -75,6 +75,8 @@ fill-the-form flow for just that job and pauses at Submit. *Mark selected as sub
 
 ![Answers tab](docs/screenshots/answers.png)
 
+When you press Start the app first checks that an AI key, your facts and a resume are set up, and tells you what is missing. The taskbar button flashes when the bot is waiting for you, and the latest run's log is kept in `logs\last_run.log`.
+
 Tips: start with *List and rank only* to see what it finds without opening any forms; keep *Forms to open* small until you trust the answers; raise *Minimum fit* if you get weak matches.
 
 ## Auto-submit (optional, off by default)

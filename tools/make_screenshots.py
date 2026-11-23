@@ -9,7 +9,7 @@ real desktop window on it, and saves PNGs to docs/screenshots/. Your own config,
 import json, os, sys, tempfile, time
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(HERE, "docs", "screenshots")
+OUT = os.environ.get("SHOT_OUT") or os.path.join(HERE, "docs", "screenshots")      # SHOT_OUT / SHOT_SIZE=900x640: for layout checks
 home = tempfile.mkdtemp(prefix="laa_demo_")
 os.environ["LAA_HOME"] = home
 sys.path.insert(0, HERE)
@@ -82,6 +82,8 @@ mem = {"Do you have experience with AutoCAD?": ("Yes", "radio"), "What is your d
 
 from PySide6.QtWidgets import QApplication
 app = QApplication([])
+from desktop import theme
+theme.apply(app)                       # the same look as the real app
 from desktop import data
 data.save_memory([{"question": q, "answer": a, "kind": k} for q, (a, k) in mem.items()])
 import secure_store
@@ -89,13 +91,36 @@ secure_store.get = lambda name: "demo" if name == "llm_api_key" else ""         
 import app_settings
 app_settings.save({})
 from desktop.main_window import MainWindow
-w = MainWindow(); w.resize(1180, 760); w.show(); app.processEvents()
+SIZE = [int(x) for x in os.environ.get("SHOT_SIZE", "1180x760").split("x")]
+w = MainWindow(); w.resize(*SIZE); w.show(); app.processEvents()
 runner, run = w.runner, w.run_tab
+
+def backdrop(size):
+    """A made-up blurred 'desktop' for the translucent window to sit on (the real app shows your own desktop through it)."""
+    from PIL import Image, ImageDraw, ImageFilter
+    W, H = size
+    img = Image.new("RGB", size)
+    px = img.load()
+    for y in range(H):
+        for x in range(W):
+            t = (x / W + y / H) / 2
+            px[x, y] = (int(20 + 70 * t), int(55 + 15 * t), int(120 + 60 * t))
+    d = ImageDraw.Draw(img)
+    for cx, cy, r, col in ((0.12, 0.15, 0.35, (40, 190, 230)), (0.85, 0.20, 0.30, (230, 120, 190)), (0.70, 0.90, 0.40, (140, 90, 255)), (0.15, 0.85, 0.30, (60, 150, 255))):
+        d.ellipse([(cx - r) * W, (cy - r) * H, (cx + r) * W, (cy + r) * H], fill=col)
+    return img.filter(ImageFilter.GaussianBlur(min(W, H) * 0.12))
+
 
 def shot(name):
     app.processEvents(); time.sleep(0.4); app.processEvents()
     os.makedirs(OUT, exist_ok=True)
-    w.grab().save(os.path.join(OUT, name + ".png")); print("saved", name)
+    from PIL import Image
+    path = os.path.join(OUT, name + ".png")
+    w.grab().save(path)
+    top = Image.open(path).convert("RGBA")
+    base = backdrop(top.size).convert("RGBA")
+    base.alpha_composite(top)
+    base.convert("RGB").save(path, optimize=True); print("saved", name)
 
 # Run tab: a finished-looking session waiting at the Submit page
 for line in ["Login successful!", "=== Choosing search titles ===", "   CAD Drafter | Revit BIM Technician | Architectural Drafter | 3D Technical Artist",

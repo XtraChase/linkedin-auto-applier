@@ -142,6 +142,7 @@ def test_run_tab_start_job_runs_one_job_and_refuses_when_busy(app, monkeypatch):
     calls = []
     monkeypatch.setattr(runner, "start", lambda script, args=(): calls.append((script, list(args))))
     tab = RunTab(runner)
+    monkeypatch.setattr("desktop.preflight.check", lambda **k: [])
     monkeypatch.setattr(runner, "is_running", lambda: False)
     assert tab.start_job("13", "BIM Tech", "C") is True
     assert calls == [("hybrid_apply.py", ["--job", "13"])]
@@ -158,6 +159,7 @@ def test_main_window_auto_apply_switches_to_run_tab(app, monkeypatch):
     _fake_jobs(monkeypatch)
     w = MainWindow()
     calls = []
+    monkeypatch.setattr("desktop.preflight.check", lambda **k: [])
     monkeypatch.setattr(w.runner, "start", lambda script, args=(): calls.append((script, list(args))))
     monkeypatch.setattr(w.runner, "is_running", lambda: False)
     w.tabs.setCurrentWidget(w.jobs_tab)

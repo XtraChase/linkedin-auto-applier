@@ -3,13 +3,14 @@ import os, re, sys
 
 from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QFont
-from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QScrollArea,
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog, QFormLayout, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QScrollArea,
                                QHeaderView, QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QSpinBox, QTableWidget,
                                QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget)
 
 import app_settings
 import secure_store
 from desktop import data
+from desktop import preflight
 from desktop.runner import BotRunner, ROOT
 
 MONO = QFont("Consolas", 9)
@@ -81,14 +82,18 @@ class RunTab(QWidget):
         self.pause_review.setToolTip("Recommended. Holds back an application with blank questions, guessed years, or AI-written answers about credentials, work status or background")
         self.pause_review.setEnabled(False)
 
-        form = QFormLayout()
-        form.addRow("Forms to open", self.max_jobs)
-        form.addRow("Minimum fit (0-100)", self.min_fit)
-        form.addRow("Jobs to score", self.candidates)
+        spins = QHBoxLayout(); spins.setSpacing(10)
+        for label, w in (("Forms to open", self.max_jobs), ("Minimum fit (0-100)", self.min_fit), ("Jobs to score", self.candidates)):
+            spins.addWidget(QLabel(label)); spins.addWidget(w); spins.addSpacing(18)
+        spins.addStretch(1)
         box = QGroupBox("This run")
-        inner = QVBoxLayout(box); inner.addLayout(form)
-        for cb in (self.list_only, self.retry_low, self.no_ai, self.auto_submit): inner.addWidget(cb)
-        inner.addWidget(self.pause_review)
+        inner = QVBoxLayout(box); inner.setSpacing(8); inner.addLayout(spins)
+        checks = QGridLayout(); checks.setHorizontalSpacing(28); checks.setVerticalSpacing(6)
+        checks.addWidget(self.list_only, 0, 0); checks.addWidget(self.retry_low, 0, 1)
+        checks.addWidget(self.no_ai, 1, 0); checks.addWidget(self.auto_submit, 1, 1)
+        checks.addWidget(self.pause_review, 2, 1)
+        checks.setColumnStretch(2, 1)
+        inner.addLayout(checks)
 
         self.start_btn = QPushButton("Start"); self.start_btn.setObjectName("primary"); self.start_btn.setDefault(True)
         self.stop_btn = QPushButton("Stop"); self.stop_btn.setObjectName("danger"); self.stop_btn.setEnabled(False)
@@ -120,8 +125,13 @@ class RunTab(QWidget):
         top = QHBoxLayout(); top.addWidget(box, 1)
         side = QVBoxLayout(); side.addWidget(self.start_btn); side.addWidget(self.stop_btn); side.addStretch(1)
         top.addLayout(side)
-        root = QVBoxLayout(self)
+        self.log.setMinimumHeight(200)
+        body = QWidget(); body.setAutoFillBackground(False)
+        root = QVBoxLayout(body); root.setContentsMargins(0, 0, 6, 0)
         root.addLayout(top); root.addWidget(self.status); root.addWidget(self.job_box); root.addWidget(self.ask_box); root.addWidget(self.log, 1)
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setFrameShape(QFrame.NoFrame); scroll.setWidget(body)   # scrolls instead of squashing on a small window
+        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }"); scroll.viewport().setAutoFillBackground(False)
+        outer = QVBoxLayout(self); outer.setContentsMargins(0, 0, 0, 0); outer.addWidget(scroll)
         self.open_btn.clicked.connect(self.open_listing)
         self.details_btn.clicked.connect(self.show_details)
 
@@ -159,8 +169,22 @@ class RunTab(QWidget):
                 self.auto_submit.setChecked(False); on = False
         self.pause_review.setEnabled(on)
 
+    def _preflight_ok(self, no_ai=False):
+        """Tell the user about missing setup (AI key, facts, resume) before Chrome opens; they may start anyway."""
+        problems = preflight.check(no_ai=no_ai)
+        if not problems:
+            return True
+        ans = QMessageBox.question(self, "Before you start",
+                                   "A few things are not set up yet:\n\n- " + "\n- ".join(problems) + "\n\nStart anyway?",
+                                   QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if ans != QMessageBox.Yes:
+            self.status.setText("Not started: " + problems[0])
+            return False
+        return True
+
     def start(self):
-        self.log.clear()
+        if not self._preflight_ok(self.no_ai.isChecked()): return
+        self.log.clear(); self._reset_saved_log()
         self.status.setText("Starting...")
         self.runner.start("hybrid_apply.py", self.args())
 
@@ -169,7 +193,8 @@ class RunTab(QWidget):
         if self.runner.is_running():
             self.status.setText("A run is already in progress. Stop it or let it finish, then try again.")
             return False
-        self.log.clear(); self.job_link = ""
+        if not self._preflight_ok(): return False
+        self.log.clear(); self._reset_saved_log(); self.job_link = ""
         self.job_label.setText(f"{title}  |  {company}" if title else f"LinkedIn job {job_id}")
         self.job_box.setVisible(True); self.open_btn.setEnabled(False); self.details_btn.setEnabled(False)
         self.status.setText("Starting auto apply for this job...")
@@ -191,6 +216,7 @@ class RunTab(QWidget):
 
     def _on_line(self, text):
         self.log.appendPlainText(text)
+        self._save_log_line(text)
         if text.startswith("ERROR:"):
             self.last_error = text
         m = re.search(r">>> Applying to #\d+: \[([^\]]*)\] (.+)$", text)
@@ -207,6 +233,22 @@ class RunTab(QWidget):
             if needle in text:
                 self.status.setText(status); break
 
+    def _reset_saved_log(self):
+        try:
+            os.makedirs(os.path.join(ROOT, "logs"), exist_ok=True)
+            open(os.path.join(ROOT, "logs", "last_run.log"), "w", encoding="utf-8").close()
+        except OSError:
+            pass
+
+    def _save_log_line(self, text):
+        """Keep the latest run's output in logs/last_run.log (local, git-ignored) so it survives a crash or a closed window."""
+        try:
+            path = os.path.join(ROOT, "logs", "last_run.log")
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "a", encoding="utf-8") as f: f.write(text + "\n")
+        except OSError:
+            pass
+
     def _on_prompt(self, text):
         asking_submit = "submit" in text.lower()
         self.ask.setText(text)
@@ -214,6 +256,7 @@ class RunTab(QWidget):
         self.no_btn.setText("Not submitted, continue" if asking_submit else "Continue to the next job")
         self.ask_box.setVisible(True)
         self.status.setText("The bot is waiting for your answer below.")
+        QApplication.alert(self.window(), 0)            # flash the taskbar button so you notice from another window
 
     def _answer(self, text):
         self.ask_box.setVisible(False)
@@ -247,7 +290,7 @@ class JobsTab(QWidget):
         h = self.table.horizontalHeader(); h.setStretchLastSection(True)
         for col, width in ((0, 56), (1, 300), (2, 170), (3, 150), (4, 110)):
             h.setSectionResizeMode(col, QHeaderView.Interactive); self.table.setColumnWidth(col, width)
-        self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setVisible(False); self.table.verticalHeader().setDefaultSectionSize(40)
         hint = QLabel("Double-click a job to open it on LinkedIn. Auto apply fills the form and stops at Submit for you to review.")
         lay = QVBoxLayout(self); lay.addLayout(top); lay.addWidget(self.table, 1); lay.addWidget(hint)
         self.refresh_btn.clicked.connect(self.refresh); self.filter.currentIndexChanged.connect(self.refresh)

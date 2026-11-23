@@ -14,7 +14,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("LinkedIn Auto Applier")
         self.resize(1120, 780)
-        self.setMinimumSize(900, 640)
+        self.setMinimumSize(940, 660)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
 
         self.runner = BotRunner(self)
@@ -72,7 +72,6 @@ def _icon_file():
 
 def run():
     app = QApplication.instance() or QApplication(sys.argv)
-    app.setStyle("Fusion")
     import app_paths
     from PySide6.QtGui import QIcon
     if sys.platform == "win32":                 # own taskbar identity, so the taskbar shows this app's icon (not Python's)
@@ -83,7 +82,7 @@ def run():
     icon_path = _icon_file()
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
-    app.setStyleSheet(theme.STYLESHEET)
+    theme.apply(app)
     win = MainWindow()
     win.show()
     return app.exec()
