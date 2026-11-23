@@ -1,0 +1,22 @@
+<!-- Hand-written stand-in for an Easy Apply step that asks for a resume file and a cover letter file (no real data).
+     The real LinkedIn markup for upload controls differs in detail; the filler reads the text around each file input. -->
+<dialog open>
+  <div><h2>Apply to Example Company</h2><p>2/3 pages</p></div>
+  <div>
+    <h3>Resume</h3>
+    <div>
+      <p>Be sure to include an updated resume</p>
+      <label for="resume-up"><span>Upload resume</span></label>
+      <input id="resume-up" type="file" accept=".pdf,.doc,.docx" style="display:none">
+    </div>
+  </div>
+  <div>
+    <h3>Cover letter</h3>
+    <div>
+      <p>Optional. Introduce yourself to the hiring team</p>
+      <label for="cover-up"><span>Upload cover letter</span></label>
+      <input id="cover-up" type="file" accept=".pdf,.doc,.docx" style="display:none">
+    </div>
+  </div>
+  <div><button type="button">Back</button><button type="button">Next</button></div>
+</dialog>
