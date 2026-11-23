@@ -106,6 +106,7 @@ for line in ["Login successful!", "=== Choosing search titles ===", "   CAD Draf
              "SUBMIT PAGE reached: read the answers below, then submit it yourself in the Chrome window"]:
     runner.line.emit(line)
 runner.prompt.emit("   Did you submit it? y = yes, Enter = no, q = quit: ")
+run.auto_submit.setChecked(False)
 w.tabs.setCurrentWidget(run); shot("run")
 w.tabs.setCurrentWidget(w.jobs_tab); w.jobs_tab.refresh(); shot("jobs")
 w.tabs.setCurrentWidget(w.answers_tab); w.answers_tab.refresh(); shot("answers")

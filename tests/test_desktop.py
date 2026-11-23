@@ -166,3 +166,23 @@ def test_main_window_auto_apply_switches_to_run_tab(app, monkeypatch):
     assert w.tabs.currentWidget() is w.run_tab
     assert calls == [("hybrid_apply.py", ["--job", "11"])]
     w.close()
+
+
+def test_auto_submit_is_off_by_default_and_needs_a_confirmed_click(app, monkeypatch):
+    from desktop.tabs import RunTab
+    from PySide6.QtWidgets import QMessageBox
+    tab = RunTab(BotRunner())
+    assert not tab.auto_submit.isChecked() and "--auto-submit" not in tab.args()
+    assert tab.pause_review.isChecked() and not tab.pause_review.isEnabled()
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.No)       # user says No
+    tab.auto_submit.click()
+    assert not tab.auto_submit.isChecked() and "--auto-submit" not in tab.args()
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.Yes)      # user says Yes
+    tab.auto_submit.click()
+    assert tab.auto_submit.isChecked() and tab.pause_review.isEnabled()
+    a = tab.args()
+    assert "--auto-submit" in a and "--no-review-pause" not in a
+    tab.pause_review.setChecked(False)
+    assert "--no-review-pause" in tab.args()
+    tab.list_only.setChecked(True)
+    assert "--auto-submit" not in tab.args()                                          # list-only never submits

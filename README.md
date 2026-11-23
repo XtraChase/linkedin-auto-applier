@@ -2,7 +2,7 @@
 
 A Windows desktop app that helps you with LinkedIn **Easy Apply**. It finds remote, US-based Easy Apply jobs that fit you, scores each one
 against **your own facts**, opens the application, fills in what it can, and then **stops at the Submit page so you read it and submit it yourself**.
-It never clicks Submit.
+By default it never clicks Submit. An optional, off-by-default **auto-submit** mode can submit for you and move on to the next form (see [Auto-submit](#auto-submit-optional-off-by-default)).
 
 ![Run tab: the bot has filled a form and is waiting at the Submit page](docs/screenshots/run.png)
 
@@ -30,7 +30,7 @@ other company, and comes with no warranty (see [LICENSE](LICENSE)).
    then **scores the rest 0-100** using only your facts, and ranks them.
 4. **Opens the best match and fills the form**: contact details from your settings, answers you saved, and the rest written by the AI from your facts.
    Anything your facts do not support is left for you. Cover letters are adapted from your own letter, as a PDF when a form asks for an upload.
-5. **Stops at "Submit application"** and lists every answer, flagged ones first, so you can check them.
+5. **Stops at "Submit application"** and lists every answer, flagged ones first, so you can check them. (Or, only if you turn on auto-submit, submits and moves on.)
 6. **Remembers your corrections** and keeps a local log of what was filled in.
 
 ## Install (about 10 minutes)
@@ -77,13 +77,27 @@ fill-the-form flow for just that job and pauses at Submit. *Mark selected as sub
 
 Tips: start with *List and rank only* to see what it finds without opening any forms; keep *Forms to open* small until you trust the answers; raise *Minimum fit* if you get weak matches.
 
+## Auto-submit (optional, off by default)
+
+In the Run tab, under **This run**, tick **Submit automatically and move on to the next form**. The app asks you to confirm, because from then on the bot clicks *Submit application*
+itself, confirms that LinkedIn showed "Application sent", closes the confirmation and opens the next job. The setting resets every time you start the app.
+
+- **Still stop and wait for me when an answer needs a look** (ticked by default, recommended): an application is *not* submitted automatically, and waits for you as usual, if a question was left blank,
+  a years-of-experience figure was a guessed default, or the AI wrote an answer about a degree or certification, work authorization, background checks or equal-opportunity questions.
+  Answers from your own settings, your saved answers and ones you typed never hold it back. Untick this box only if you accept that the AI's answers go out without you reading them.
+- *Forms to open* and the *Daily submitted-application cap* in Settings still limit how many applications a run sends, and *List and rank only* never submits.
+- The **Auto apply** button in the Jobs tab always stops at Submit, whatever this setting says.
+- Everything sent is still recorded in the Answers tab and in `all excelsnswers_log.jsonl`.
+
+You are responsible for every application it sends. A submitted application cannot be taken back, and automating LinkedIn can get your account restricted.
+
 ## Command line (optional)
 
 ```
 start_hybrid.bat --max-jobs 3 --min-fit 30
 ```
 
-Options: `--list-only`, `--no-ai`, `--retry-low`, `--any-level`, `--job <LinkedIn job id>`.
+Options: `--list-only`, `--no-ai`, `--retry-low`, `--any-level`, `--job <LinkedIn job id>`, `--auto-submit` (with `--no-review-pause` to skip the safety stop).
 
 ## Standalone .exe (optional)
 

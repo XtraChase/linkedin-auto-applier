@@ -41,6 +41,8 @@ ap.add_argument("--config-terms", action="store_true", help="smart mode: also se
 ap.add_argument("--retry-low", action="store_true", help="smart mode: score again the jobs earlier logged as 'low fit'")
 ap.add_argument("--daily-cap", type=int, default=SETTINGS["daily_cap"], help="stop opening forms after this many submitted applications today (0 = no cap)")
 ap.add_argument("--any-level", action="store_true", help="smart mode: don't limit to entry-level / associate postings")
+ap.add_argument("--auto-submit", action="store_true", help="OPT-IN: click Submit for you when the application has nothing that needs a look, then move on to the next form")
+ap.add_argument("--no-review-pause", action="store_true", help="with --auto-submit: submit even when an answer is flagged (AI-written credential/legal answers, guessed years, blanks)")
 ap.add_argument("--job", default="", help="apply to this one LinkedIn job id (from the Jobs tab): fill the form and stop at Submit")
 ap.add_argument("--allow-senior", action="store_true", default=bool(SETTINGS["allow_senior"]), help="smart mode: don't skip Senior / Lead / Manager / Director titles")
 ap.add_argument("--max-years", type=int, default=SETTINGS["max_years"], help="smart mode: skip postings that require this many years or more (default 7)")
@@ -137,6 +139,9 @@ def set_status(job_id, status):
 
 def ask_outcome(result, more=True):
     """After a form closes, confirm whether it was really submitted. Returns (result, quit_now)."""
+    if result == "applied" and args.auto_submit:
+        print("   Recorded as APPLIED (LinkedIn showed 'Application sent'). Moving on.")
+        return result, False
     if result == "applied":
         print("   Recorded as APPLIED (LinkedIn showed 'Application sent').")
         prompt = "   Press Enter to continue" + (" to the next job" if more else "") + ", or q then Enter to quit: "
@@ -232,7 +237,7 @@ def announce_job(job, desc="", about=""):
 
 
 def hand_over_form(job, desc="", about=""):
-    """Click Easy Apply, fill the form from your config + AI, stop at the Submit page. Never submits."""
+    """Click Easy Apply, fill the form from your config + AI, stop at the Submit page. Submits only with the opt-in --auto-submit."""
     announce_job(job, desc, about)
     clicked = False
     for attempt in range(5):                 # LinkedIn redraws the pane right after load, so re-find the button each try
@@ -254,10 +259,13 @@ def hand_over_form(job, desc="", about=""):
     else:
         return "form did not open"
     if not args.manual:
-        print("   >> Form open: filling what your config covers. I never click Submit; you do that on the Review page.")
+        if args.auto_submit:
+            print("   >> Form open: filling what your config covers. AUTO-SUBMIT is ON: I will click Submit if nothing needs a look" + ("." if not args.no_review_pause else " (even if answers are flagged)."))
+        else:
+            print("   >> Form open: filling what your config covers. I never click Submit; you do that on the Review page.")
         if answerer is not None:
             answerer.set_job({"id": job["id"], "title": job["title"], "company": job["company"], "description": desc, "about": about})
-        res = Filler(d, log=print, ai=answerer, job=job).run()
+        res = Filler(d, log=print, ai=answerer, job=job, auto_submit=args.auto_submit, review_pause=not args.no_review_pause).run()
         return {"applied": "applied", "closed": "form closed, not submitted"}.get(res, res)
     print("   >> The Easy Apply form is open. Fill it in and click Submit yourself (or close it to skip).")
     last, sent, started = "", False, time.time()
@@ -425,6 +433,7 @@ def open_job(job):
 def apply_one(job_id, done_ids):
     """Auto apply to one specific job (the Jobs tab button): open it, fill the form, stop at Submit, ask what you did."""
     from job_lookup import build_job, history_row
+    args.auto_submit = False                       # the Jobs tab button always pauses at Submit for you
     SCORE_CACHE.update(load_cache())
     job = build_job(job_id, SCORE_CACHE.get(job_id), history_row(job_id, HISTORY))
     score = job["score"] if job["score"] is not None else "-"
@@ -535,6 +544,7 @@ def smart_main(done_ids):
             result, quit_now = ask_outcome(result, more)
         log_row(j, f'{result} (fit {j["score"]})'); done_ids.add(j["id"]); set_status(j["id"], result)
         if quit_now: return
+        if args.auto_submit and result == "applied": pause(4, 9)      # unhurried between automatic submissions
     print("\nDone. Forms opened:", opened, "| history:", HISTORY)
 
 

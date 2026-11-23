@@ -4,7 +4,8 @@ Easy Apply form filler for LinkedIn's 2026 application dialog.
 Design rules
   * Fills ONLY what your config answers (config/personals.py, config/questions.py) cover.
   * Anything it is not sure about is LEFT UNTOUCHED and you are asked to answer it in the browser.
-  * It NEVER clicks "Submit application". It stops on the final Review page so you check and submit.
+  * By default it NEVER clicks "Submit application": it stops on the final Review page so you check and submit.
+    Only if you turn on auto-submit (--auto-submit / the Run tab checkbox) does it click Submit, and then only when nothing needs a look.
   * Answers LinkedIn pre-filled from your earlier applications are kept (except contact details,
     which are corrected to your config so a stale phone number can't slip through).
 
@@ -16,7 +17,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import Select
 
-from answer_audit import risk_flags, summarize, write_log
+from answer_audit import risk_flags, summarize, write_log, review_reasons
 from answer_memory import Memory
 from app_settings import SETTINGS
 from config import personals as P
@@ -216,13 +217,16 @@ def _follow_cfg():
 
 
 class Filler:
-    def __init__(self, driver, log=print, ai=None, job=None, memory=None):
+    def __init__(self, driver, log=print, ai=None, job=None, memory=None, auto_submit=False, review_pause=True):
         self.d = driver
         self.log = log
         self.ai = ai                         # AIAnswerer or None
         self.job = job or {}
         self.memory = memory if memory is not None else Memory()
         self.answers = []                    # audit rows: {q, a, source, flags}
+        self.auto_submit = auto_submit       # opt-in: click Submit for you when nothing needs a look
+        self.review_pause = review_pause     # with auto_submit: still stop for you when an answer needs a look
+        self.left_blank = []                 # questions nothing supported an answer for
 
     # ---- audit ---------------------------------------------------------------------------
     def rec(self, label, answer, source):
@@ -449,7 +453,7 @@ class Filler:
 
     # ---- whole form ----------------------------------------------------------------------
     def run(self, wait_seconds=25 * 60):
-        """Walk the form, filling what we can. Stops on the Submit page. Never submits.
+        """Walk the form, filling what we can. Stops on the Submit page (submits only with auto_submit).
         Returns 'applied' | 'closed' | 'stopped at review ...'."""
         t0 = time.time()
         last_sig, page_no = None, 0
@@ -479,8 +483,11 @@ class Filler:
             filled, unanswered = self.fill_page(pg)
             for f in filled: self.log("   filled:", f)
             unanswered = unanswered + self.handle_uploads(pg)
+            self.left_blank += [u for u in unanswered if u not in self.left_blank]
             if final:
                 summarize(self.answers, self.log)
+                if self.auto_submit:
+                    return self._auto_submit(t0, wait_seconds)
                 write_log(self.job, self.answers, "reached submit page")
                 self.log("   >> SUBMIT PAGE reached. Check everything, then click 'Submit application' yourself (or close the form to skip).")
                 return self._wait_closed(t0, wait_seconds)
@@ -502,6 +509,38 @@ class Filler:
             else:
                 last_sig = None                          # new page: loop will process it
         return "closed"
+
+    def _auto_submit(self, t0, wait_seconds):
+        """Opt-in: click 'Submit application' ourselves when nothing needs a human look, confirm LinkedIn accepted it,
+        close the confirmation and return so the run moves on. Otherwise fall back to waiting for you."""
+        reasons = review_reasons(self.answers, self.left_blank) if self.review_pause else []
+        if reasons:
+            write_log(self.job, self.answers, "reached submit page (auto-submit held back)")
+            self.log("   >> AUTO-SUBMIT HELD BACK: this one needs your eyes:")
+            for r in reasons[:6]: self.log("        -", r)
+            self.log("   >> SUBMIT PAGE reached. Check everything, then click 'Submit application' yourself (or close the form to skip).")
+            return self._wait_closed(t0, wait_seconds)
+        self.log("   >> AUTO-SUBMIT: submitting this application now.")
+        if not self.click_button("Submit application"):
+            self.log("   >> Could not find the Submit button; please submit it yourself.")
+            write_log(self.job, self.answers, "reached submit page (submit button not found)")
+            return self._wait_closed(t0, wait_seconds)
+        for _ in range(30):                                   # up to ~30 s for LinkedIn to confirm
+            time.sleep(1)
+            t = self.d.execute_script("const x=document.querySelector('dialog'); return x? x.innerText : null;")
+            if t is None: break                               # dialog gone: treated below
+            if re.search(r"application (was )?sent", t, re.I):
+                write_log(self.job, self.answers, "auto-submitted")
+                self.log("   >> Application sent (LinkedIn confirmed). Closing the confirmation.")
+                for label in ("Done", "Dismiss"):
+                    if self.click_button(label): break
+                time.sleep(1)
+                if self.dialog_open():
+                    self.d.execute_script("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',keyCode:27,bubbles:true}));")
+                return "applied"
+        write_log(self.job, self.answers, "auto-submit not confirmed")
+        self.log("   >> LinkedIn did not confirm the submission (a required answer may be missing). Please check the browser and finish it by hand.")
+        return self._wait_closed(t0, wait_seconds)
 
     def _wait_page_change(self, sig, t0, limit, learn=False):
         snap = {}

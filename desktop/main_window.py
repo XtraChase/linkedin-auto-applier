@@ -22,7 +22,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.root)
 
         title = QLabel("LinkedIn Auto Applier"); title.setObjectName("title")
-        sub = QLabel("Finds the jobs that fit you, fills the application, and stops at Submit so you decide.")
+        sub = QLabel("Finds the jobs that fit you and fills the application. It stops at Submit so you decide, unless you turn on auto-submit.")
         sub.setObjectName("subtitle")
         head = QVBoxLayout(); head.setSpacing(2); head.addWidget(title); head.addWidget(sub)
 

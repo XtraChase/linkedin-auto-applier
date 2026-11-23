@@ -4,7 +4,7 @@ import os, re, sys
 from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QFont
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QScrollArea,
-                               QHeaderView, QLabel, QLineEdit, QPlainTextEdit, QPushButton, QSpinBox, QTableWidget,
+                               QHeaderView, QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QSpinBox, QTableWidget,
                                QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget)
 
 import app_settings
@@ -26,6 +26,8 @@ STATUS_RULES = [                                   # (text in the bot's output, 
     ("RANKED", "Jobs ranked. Opening the best fit..."),
     (">>> Applying to", "Opening the next job..."),
     ("Form open", "Filling in the application..."),
+    ("AUTO-SUBMIT HELD BACK", "WAITING FOR YOU: this application needs a look before it is submitted (see the log)"),
+    ("AUTO-SUBMIT: submitting", "Submitting automatically..."),
     ("SUBMIT PAGE reached", "WAITING FOR YOU: read the answers, then click 'Submit application' in the Chrome window (or close the form to skip)"),
     ("STOPPED:", "Stopped: LinkedIn needs you (see the log)"),
     ("Daily cap reached", "Daily application cap reached"),
@@ -73,6 +75,11 @@ class RunTab(QWidget):
         self.list_only = QCheckBox("List and rank only (open no forms)")
         self.retry_low = QCheckBox("Score earlier low-fit jobs again")
         self.no_ai = QCheckBox("No AI answers (use only my saved answers)")
+        self.auto_submit = QCheckBox("Submit automatically and move on to the next form")
+        self.auto_submit.setToolTip("OFF by default. When ON the bot clicks Submit for you instead of waiting. You are responsible for every application it sends.")
+        self.pause_review = QCheckBox("Still stop and wait for me when an answer needs a look"); self.pause_review.setChecked(True)
+        self.pause_review.setToolTip("Recommended. Holds back an application with blank questions, guessed years, or AI-written answers about credentials, work status or background")
+        self.pause_review.setEnabled(False)
 
         form = QFormLayout()
         form.addRow("Forms to open", self.max_jobs)
@@ -80,11 +87,12 @@ class RunTab(QWidget):
         form.addRow("Jobs to score", self.candidates)
         box = QGroupBox("This run")
         inner = QVBoxLayout(box); inner.addLayout(form)
-        for cb in (self.list_only, self.retry_low, self.no_ai): inner.addWidget(cb)
+        for cb in (self.list_only, self.retry_low, self.no_ai, self.auto_submit): inner.addWidget(cb)
+        inner.addWidget(self.pause_review)
 
         self.start_btn = QPushButton("Start"); self.start_btn.setObjectName("primary"); self.start_btn.setDefault(True)
         self.stop_btn = QPushButton("Stop"); self.stop_btn.setObjectName("danger"); self.stop_btn.setEnabled(False)
-        self.status = QLabel("Ready. The bot never clicks Submit: you do, in the Chrome window.")
+        self.status = QLabel("Ready. By default the bot never clicks Submit: you do, in the Chrome window (unless you turn on auto-submit).")
         self.status.setWordWrap(True); self.status.setObjectName("status")
 
         self.ask = QLabel(""); self.ask.setWordWrap(True)
@@ -118,6 +126,7 @@ class RunTab(QWidget):
         self.details_btn.clicked.connect(self.show_details)
 
         self.start_btn.clicked.connect(self.start)
+        self.auto_submit.clicked.connect(self._auto_submit_clicked)
         self.stop_btn.clicked.connect(self.runner.stop)
         self.yes_btn.clicked.connect(lambda: self._answer("y"))
         self.no_btn.clicked.connect(lambda: self._answer(""))
@@ -132,7 +141,23 @@ class RunTab(QWidget):
         if self.list_only.isChecked(): a.append("--list-only")
         if self.retry_low.isChecked(): a.append("--retry-low")
         if self.no_ai.isChecked(): a.append("--no-ai")
+        if self.auto_submit.isChecked() and not self.list_only.isChecked():
+            a.append("--auto-submit")
+            if not self.pause_review.isChecked(): a.append("--no-review-pause")
         return a
+
+    def _auto_submit_clicked(self, on):
+        """Turning automatic submission on needs a clear yes: the bot then sends applications without you reading them."""
+        if on:
+            ans = QMessageBox.warning(
+                self, "Submit automatically?",
+                "With this ON the bot clicks 'Submit application' for you and moves on to the next job, without waiting for you to read it.\n\n"
+                "The answers are written by an AI from your facts and can be wrong, and a submitted application cannot be taken back. "
+                "You are responsible for everything it sends.\n\nTurn automatic submit on for this run?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if ans != QMessageBox.Yes:
+                self.auto_submit.setChecked(False); on = False
+        self.pause_review.setEnabled(on)
 
     def start(self):
         self.log.clear()
@@ -153,7 +178,8 @@ class RunTab(QWidget):
 
     def _running(self, on):
         self.start_btn.setEnabled(not on); self.stop_btn.setEnabled(on)
-        for w in (self.max_jobs, self.min_fit, self.candidates, self.list_only, self.retry_low, self.no_ai): w.setEnabled(not on)
+        for w in (self.max_jobs, self.min_fit, self.candidates, self.list_only, self.retry_low, self.no_ai, self.auto_submit): w.setEnabled(not on)
+        self.pause_review.setEnabled(not on and self.auto_submit.isChecked())
 
     def open_listing(self):
         """Open the current job's LinkedIn posting in a new browser tab (your default browser)."""

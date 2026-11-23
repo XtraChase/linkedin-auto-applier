@@ -43,6 +43,25 @@ def risk_flags(label, answer, source):
     return flags
 
 
+# Flags serious enough to stop an AUTOMATIC submit (an answer the AI wrote or a default was guessed for these)
+SERIOUS_FLAGS = ("default years", "education / credential claim", "legal work status", "background / legal",
+                 "equal-opportunity question", "Yes to a list of tools")
+
+
+def review_reasons(answers, unanswered=()):
+    """Why an application should NOT be submitted automatically (empty list = fine to submit).
+    Answers from your config, your saved answers or typed by you never count; AI answers and guessed defaults do."""
+    reasons = []
+    if unanswered:
+        reasons.append(f"{len(unanswered)} question(s) left blank: " + "; ".join(u[:50] for u in list(unanswered)[:3]))
+    for a in answers:
+        if a["source"] in ("config", "you", "memory"): continue
+        for f in a["flags"]:
+            if f.startswith(SERIOUS_FLAGS):
+                reasons.append(f'"{a["q"][:60]}" ({f})')
+    return reasons
+
+
 def summarize(answers, log=print):
     """Print the Submit-page review: flagged answers first, then the rest by source."""
     if not answers: return
