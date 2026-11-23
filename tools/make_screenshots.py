@@ -1,7 +1,7 @@
 """
 Make the README screenshots from FICTIONAL demo data (no real person, jobs or keys).
 
-    .venv\Scripts\python.exe tools\make_screenshots.py
+    python tools/make_screenshots.py
 
 It builds a throw-away data folder (LAA_HOME) with an invented applicant, invented companies and made-up answers, opens the
 real desktop window on it, and saves PNGs to docs/screenshots/. Your own config, history and keys are never read.
@@ -31,7 +31,7 @@ with open(os.path.join(home, "all excels", "hybrid_history.csv"), "w", encoding=
     f.write("job_id,title,company,location,link,status,time\n")
     for j in JOBS:
         if j[4] != "scored":
-            f.write(f"{j[0]},{j[1]},{j[2]},Remote,x,{j[4]},2026-01-15T10:00:00\n")
+            f.write(f'{j[0]},{j[1]},{j[2]},Remote,x,"{j[4]}",2026-01-15T10:00:00\n')
 
 log = [
     {"time": "2026-01-15T10:05:00", "title": "Revit BIM Technician", "company": "Example Engineering Group", "result": "applied (fit 82)", "answers": [

@@ -169,6 +169,20 @@ class RunTab(QWidget):
                 self.auto_submit.setChecked(False); on = False
         self.pause_review.setEnabled(on)
 
+    RUN_FIELDS = ("max_jobs", "min_fit", "candidates")
+    RUN_FLAGS = ("list_only", "retry_low", "no_ai")          # auto_submit is deliberately NOT remembered: it must be turned on each time
+
+    def state(self):
+        s = {k: getattr(self, k).value() for k in self.RUN_FIELDS}
+        s.update({k: getattr(self, k).isChecked() for k in self.RUN_FLAGS})
+        return s
+
+    def restore(self, s):
+        for k in self.RUN_FIELDS:
+            if isinstance(s.get(k), int): getattr(self, k).setValue(s[k])
+        for k in self.RUN_FLAGS:
+            if isinstance(s.get(k), bool): getattr(self, k).setChecked(s[k])
+
     def _preflight_ok(self, no_ai=False):
         """Tell the user about missing setup (AI key, facts, resume) before Chrome opens; they may start anyway."""
         problems = preflight.check(no_ai=no_ai)
@@ -283,16 +297,21 @@ class JobsTab(QWidget):
         self.mark_btn = QPushButton("Mark selected as submitted")
         self.mark_btn.setToolTip("Fix the record if you submitted a job that the log shows as not submitted")
         self.count = QLabel("")
-        top = QHBoxLayout(); top.addWidget(QLabel("Show:")); top.addWidget(self.filter); top.addWidget(self.refresh_btn); top.addWidget(self.mark_btn); top.addStretch(1); top.addWidget(self.count)
+        self.search = QLineEdit(); self.search.setPlaceholderText("Search title, company or notes..."); self.search.setClearButtonEnabled(True); self.search.setMinimumWidth(240)
+        top = QHBoxLayout(); top.addWidget(QLabel("Show:")); top.addWidget(self.filter); top.addWidget(self.search); top.addWidget(self.refresh_btn); top.addWidget(self.mark_btn); top.addStretch(1); top.addWidget(self.count)
         self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(["Fit", "Job", "Company", "Status", "Action", "Why"])
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers); self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         h = self.table.horizontalHeader(); h.setStretchLastSection(True)
-        for col, width in ((0, 56), (1, 300), (2, 170), (3, 150), (4, 110)):
+        for col, width in ((0, 56), (1, 250), (2, 150), (3, 210), (4, 112)):
             h.setSectionResizeMode(col, QHeaderView.Interactive); self.table.setColumnWidth(col, width)
         self.table.verticalHeader().setVisible(False); self.table.verticalHeader().setDefaultSectionSize(40)
         hint = QLabel("Double-click a job to open it on LinkedIn. Auto apply fills the form and stops at Submit for you to review.")
         lay = QVBoxLayout(self); lay.addLayout(top); lay.addWidget(self.table, 1); lay.addWidget(hint)
+        self._sort = (0, Qt.DescendingOrder)                  # best fit first, like the log
+        h.setSectionsClickable(True); h.setSortIndicatorShown(True); h.setSortIndicator(0, Qt.DescendingOrder)
+        h.sectionClicked.connect(self._sort_by)
+        self.search.textChanged.connect(self.refresh)
         self.refresh_btn.clicked.connect(self.refresh); self.filter.currentIndexChanged.connect(self.refresh)
         self.mark_btn.clicked.connect(self.mark_submitted)
         self.table.cellDoubleClicked.connect(self._open)
@@ -307,16 +326,46 @@ class JobsTab(QWidget):
         if s == "scored": return "Scored only"
         return "Opened, not submitted"
 
+    SORT_KEYS = {0: lambda j: j["score"] if j["score"] is not None else -1, 1: lambda j: j["title"].lower(), 2: lambda j: j["company"].lower(),
+                 3: lambda j: j["status"].lower(), 5: lambda j: (j.get("reason") or "").lower()}
+
+    def _sort_by(self, col):
+        """Click a column header to sort by it; click again to reverse. (The Action column is not sortable.)"""
+        if col not in self.SORT_KEYS: return
+        order = Qt.AscendingOrder if (self._sort[0] == col and self._sort[1] == Qt.DescendingOrder) else Qt.DescendingOrder
+        if col != 0 and self._sort[0] != col: order = Qt.AscendingOrder        # text columns start A to Z; Fit starts high to low
+        self._sort = (col, order)
+        self.table.horizontalHeader().setSortIndicator(col, order)
+        self.refresh()
+
+    def state(self):
+        return {"filter": self.filter.currentText(), "search": self.search.text(), "sort": [self._sort[0], 1 if self._sort[1] == Qt.DescendingOrder else 0]}
+
+    def restore(self, s):
+        if s.get("filter") in [self.filter.itemText(i) for i in range(self.filter.count())]: self.filter.setCurrentText(s["filter"])
+        if isinstance(s.get("search"), str): self.search.setText(s["search"])
+        sort = s.get("sort")
+        if isinstance(sort, list) and len(sort) == 2 and sort[0] in self.SORT_KEYS:
+            self._sort = (sort[0], Qt.DescendingOrder if sort[1] else Qt.AscendingOrder)
+            self.table.horizontalHeader().setSortIndicator(*self._sort)
+        self.refresh()
+
     def refresh(self):
         want = self.filter.currentText()
-        self._jobs = [j for j in data.load_jobs() if want == "All" or self._bucket(j["status"]) == want]
+        needle = self.search.text().strip().lower()
+        jobs = [j for j in data.load_jobs() if want == "All" or self._bucket(j["status"]) == want]
+        if needle:
+            jobs = [j for j in jobs if needle in " ".join([j["title"], j["company"], j["status"], j.get("reason") or ""]).lower()]
+        col, order = self._sort
+        jobs.sort(key=self.SORT_KEYS[col], reverse=(order == Qt.DescendingOrder))
+        self._jobs = jobs
         self.table.setRowCount(len(self._jobs))
         for r, j in enumerate(self._jobs):
             why = j.get("reason") or (j["status"].split(":", 1)[1].strip() if ":" in j["status"] else "")
             cells = [str(j["score"]) if j["score"] is not None else "", j["title"], j["company"], j["status"].split(":", 1)[0].strip(), "", why]
             submitted = self._bucket(j["status"]) == "Submitted"
             for c, text in enumerate(cells):
-                item = QTableWidgetItem(text); item.setToolTip(why or text)
+                item = QTableWidgetItem(text); item.setToolTip(j["status"] if c == 3 else (why or text))
                 if c == 0: item.setTextAlignment(Qt.AlignCenter)
                 if submitted: item.setBackground(QColor(70, 210, 140, 70))
                 self.table.setItem(r, c, item)

@@ -1,10 +1,10 @@
 """Main window: a glass header and five tabs."""
 import os, sys
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QByteArray, Qt
 from PySide6.QtWidgets import (QApplication, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QTabWidget, QVBoxLayout, QWidget)
 
-from desktop import theme
+from desktop import theme, ui_state
 from desktop.runner import BotRunner
 from desktop.tabs import AnswersTab, JobsTab, ProfileTab, RunTab, SettingsTab
 
@@ -36,6 +36,12 @@ class MainWindow(QMainWindow):
             import os; self.tabs.setCurrentIndex(int(os.environ.get("APP_START_TAB", "0")))
         except ValueError:
             pass
+        self._state = ui_state.load()
+        self.run_tab.restore(self._state.get("run", {})); self.jobs_tab.restore(self._state.get("jobs", {}))
+        geo = self._state.get("geometry")
+        if isinstance(geo, str):
+            try: self.restoreGeometry(QByteArray.fromBase64(geo.encode("ascii")))
+            except Exception: pass
         self.jobs_tab.apply_requested.connect(self._auto_apply)
         self.run_tab.run_finished.connect(self.jobs_tab.refresh)
         self.run_tab.run_finished.connect(self.answers_tab.refresh)
@@ -60,6 +66,7 @@ class MainWindow(QMainWindow):
             if ans != QMessageBox.Yes:
                 event.ignore(); return
             self.runner.stop()
+        ui_state.save({"geometry": bytes(self.saveGeometry().toBase64()).decode("ascii"), "run": self.run_tab.state(), "jobs": self.jobs_tab.state()})
         event.accept()
 
 

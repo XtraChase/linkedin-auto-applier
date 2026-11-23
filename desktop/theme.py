@@ -53,7 +53,6 @@ QPushButton#danger:disabled {{ background: rgba(255, 255, 255, 0.04); border-col
 QLineEdit, QSpinBox, QComboBox {{ background: rgba(8, 12, 28, 0.26); border: 1px solid rgba(255, 255, 255, 0.17); border-radius: 9px; padding: 6px 10px;
     selection-background-color: rgba(110, 168, 255, 0.55); }}
 QLineEdit:focus, QSpinBox:focus, QComboBox:focus, QPlainTextEdit:focus {{ border: 1px solid rgba(120, 210, 255, 0.75); }}
-QSpinBox::up-button, QSpinBox::down-button {{ width: 0; border: none; background: transparent; }}     /* type the number, or use the wheel / arrow keys */
 QComboBox QAbstractItemView {{ background: rgba(26, 30, 52, 0.98); border: 1px solid rgba(255, 255, 255, 0.2); selection-background-color: rgba(110, 168, 255, 0.45); outline: none; }}
 QPlainTextEdit {{ background: rgba(8, 12, 28, 0.30); border: 1px solid rgba(255, 255, 255, 0.20); border-radius: 14px; padding: 8px;
     selection-background-color: rgba(110, 168, 255, 0.55); }}
@@ -82,6 +81,33 @@ QToolTip {{ background: rgba(26, 30, 52, 0.97); color: #eef2ff; border: 1px soli
 """
 
 
+def _arrow_css():
+    """Little up/down chevrons for number boxes. Drawn once into the temp folder because Qt style sheets can only point at image files."""
+    import os, tempfile
+    from PySide6.QtGui import QPen, QPixmap
+    try:
+        folder = os.path.join(tempfile.gettempdir(), "laa_theme")
+        os.makedirs(folder, exist_ok=True)
+        paths = {}
+        for name, pts in (("up", ((2, 6), (5, 3), (8, 6))), ("down", ((2, 3), (5, 6), (8, 3)))):
+            pm = QPixmap(10, 9); pm.fill(Qt.transparent)
+            p = QPainter(pm); p.setRenderHint(QPainter.Antialiasing)
+            pen = QPen(QColor(238, 242, 255, 230)); pen.setWidthF(1.6); pen.setCapStyle(Qt.RoundCap); pen.setJoinStyle(Qt.RoundJoin); p.setPen(pen)
+            p.drawPolyline([QPointF(x, y) for x, y in pts]); p.end()
+            paths[name] = os.path.join(folder, f"{name}.png").replace("\\", "/")
+            pm.save(paths[name])
+        return f"""
+QSpinBox {{ padding-right: 26px; }}
+QSpinBox::up-button {{ subcontrol-origin: border; subcontrol-position: top right; width: 22px; border: none; border-left: 1px solid rgba(255,255,255,0.14); border-top-right-radius: 9px; background: rgba(255,255,255,0.06); }}
+QSpinBox::down-button {{ subcontrol-origin: border; subcontrol-position: bottom right; width: 22px; border: none; border-left: 1px solid rgba(255,255,255,0.14); border-bottom-right-radius: 9px; background: rgba(255,255,255,0.06); }}
+QSpinBox::up-button:hover, QSpinBox::down-button:hover {{ background: rgba(255,255,255,0.16); }}
+QSpinBox::up-arrow {{ image: url({paths['up']}); width: 10px; height: 9px; }}
+QSpinBox::down-arrow {{ image: url({paths['down']}); width: 10px; height: 9px; }}
+"""
+    except Exception:
+        return "QSpinBox::up-button, QSpinBox::down-button { width: 0; border: none; background: transparent; }"      # no arrows: type, wheel or arrow keys
+
+
 def apply(app):
     """Style the whole application: Fusion look, a palette whose 'base' colours are see-through (so scroll areas, tables and
     text boxes show the glass behind them instead of painting an opaque box), and the stylesheet."""
@@ -96,7 +122,7 @@ def apply(app):
     pal.setColor(QPalette.Highlight, QColor(110, 168, 255, 140))
     pal.setColor(QPalette.PlaceholderText, QColor(238, 242, 255, 110))
     app.setPalette(pal)
-    app.setStyleSheet(STYLESHEET)
+    app.setStyleSheet(STYLESHEET + _arrow_css())
 
 
 class GlassRoot(QWidget):

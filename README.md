@@ -1,5 +1,7 @@
 ﻿# LinkedIn Auto Applier
 
+[![tests](https://github.com/XtraChase/linkedin-auto-applier/actions/workflows/tests.yml/badge.svg)](https://github.com/XtraChase/linkedin-auto-applier/actions/workflows/tests.yml)
+
 A Windows desktop app that helps you with LinkedIn **Easy Apply**. It finds remote, US-based Easy Apply jobs that fit you, scores each one
 against **your own facts**, opens the application, fills in what it can, and then **stops at the Submit page so you read it and submit it yourself**.
 By default it never clicks Submit. An optional, off-by-default **auto-submit** mode can submit for you and move on to the next form (see [Auto-submit](#auto-submit-optional-off-by-default)).
@@ -65,7 +67,7 @@ Open them in Notepad and fill in your own details; the files explain each option
 When a form reaches the Submit page, the app tells you. Read the answers in the log, then submit (or close the form) in Chrome and tell the app what you did.
 While a job is open, **Open job listing** shows the posting in your browser and **Read job details here** shows it in the app.
 
-**Jobs tab:** every job seen, best fit first. Double-click one to open it on LinkedIn. Every job you have not submitted has an **Auto apply** button: it runs the same
+**Jobs tab:** every job seen, best fit first. Click a column header to sort (click again to reverse) and use the search box to find a job by title, company or note. Double-click one to open it on LinkedIn. Every job you have not submitted has an **Auto apply** button: it runs the same
 fill-the-form flow for just that job and pauses at Submit. *Mark selected as submitted* fixes the record if you submitted something the log shows as not submitted.
 
 ![Jobs tab with an Auto apply button on each unsubmitted job](docs/screenshots/jobs.png)
@@ -76,6 +78,8 @@ fill-the-form flow for just that job and pauses at Submit. *Mark selected as sub
 ![Answers tab](docs/screenshots/answers.png)
 
 When you press Start the app first checks that an AI key, your facts and a resume are set up, and tells you what is missing. The taskbar button flashes when the bot is waiting for you, and the latest run's log is kept in `logs\last_run.log`.
+
+The window size, the numbers and ticks in *This run* (except auto-submit, which always starts off) and the Jobs sorting are remembered between launches.
 
 Tips: start with *List and rank only* to see what it finds without opening any forms; keep *Forms to open* small until you trust the answers; raise *Minimum fit* if you get weak matches.
 

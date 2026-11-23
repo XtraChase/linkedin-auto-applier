@@ -12,6 +12,12 @@ from desktop import data
 from desktop.runner import BotRunner, PROMPT_RE, clean_chunk
 
 
+@pytest.fixture(autouse=True)
+def _isolated_ui_state(tmp_path, monkeypatch):
+    from desktop import ui_state
+    monkeypatch.setattr(ui_state, "PATH", str(tmp_path / "ui_state.json"))
+
+
 @pytest.fixture(scope="module")
 def app():
     return QApplication.instance() or QApplication([])
@@ -124,16 +130,51 @@ def test_jobs_tab_has_auto_apply_only_for_jobs_not_applied(app, monkeypatch):
     from PySide6.QtWidgets import QPushButton
     _fake_jobs(monkeypatch)
     tab = JobsTab()
-    btns = [tab.table.cellWidget(r, 4) for r in range(3)]
-    assert isinstance(btns[0], QPushButton) and btns[0].text() == "Auto apply"
-    assert btns[1] is None                                  # already submitted: no button
-    assert isinstance(btns[2], QPushButton)                 # opened but not submitted: can be retried
+    row = {j["id"]: r for r, j in enumerate(tab._jobs)}                 # rows are sorted by fit, so look rows up by job id
+    assert isinstance(tab.table.cellWidget(row["11"], 4), QPushButton) and tab.table.cellWidget(row["11"], 4).text() == "Auto apply"
+    assert tab.table.cellWidget(row["12"], 4) is None                    # already submitted: no button
+    assert isinstance(tab.table.cellWidget(row["13"], 4), QPushButton)   # opened but not submitted: can be retried
     got = []
     tab.apply_requested.connect(lambda *a: got.append(a))
-    btns[2].click()
+    tab.table.cellWidget(row["13"], 4).click()
     assert got == [("13", "BIM Tech", "C")]
     tab.filter.setCurrentText("Submitted")                  # refreshing must not leave a stale button behind
     assert tab.table.rowCount() == 1 and tab.table.cellWidget(0, 4) is None
+
+
+def test_jobs_tab_sorts_by_column_and_searches(app, monkeypatch):
+    from desktop.tabs import JobsTab
+    _fake_jobs(monkeypatch)
+    tab = JobsTab()
+    assert [j["id"] for j in tab._jobs] == ["11", "13", "12"]            # default: best fit first
+    tab._sort_by(1)                                                      # Job column: A to Z
+    assert [j["title"] for j in tab._jobs] == ["BIM Tech", "CAD Drafter", "Detailer"]
+    tab._sort_by(1)                                                      # again: Z to A
+    assert [j["title"] for j in tab._jobs] == ["Detailer", "CAD Drafter", "BIM Tech"]
+    tab._sort_by(4)                                                      # Action column is not sortable
+    assert tab._sort[0] == 1
+    tab.search.setText("acme")
+    assert [j["id"] for j in tab._jobs] == ["11"] and tab.table.rowCount() == 1
+    tab.search.setText("zzz")
+    assert tab.table.rowCount() == 0
+
+
+def test_ui_state_roundtrip_and_auto_submit_is_never_remembered(app, monkeypatch):
+    from desktop import ui_state
+    from desktop.tabs import JobsTab, RunTab
+    _fake_jobs(monkeypatch)
+    run = RunTab(BotRunner())
+    run.max_jobs.setValue(3); run.min_fit.setValue(55); run.list_only.setChecked(True); run.auto_submit.setChecked(True)
+    s = run.state()
+    assert s["max_jobs"] == 3 and s["list_only"] is True and "auto_submit" not in s
+    ui_state.save({"run": s})
+    run2 = RunTab(BotRunner()); run2.restore(ui_state.load()["run"])
+    assert run2.max_jobs.value() == 3 and run2.min_fit.value() == 55 and run2.list_only.isChecked() and not run2.auto_submit.isChecked()
+    jobs = JobsTab(); jobs._sort_by(2); jobs.search.setText("acme")
+    st = jobs.state()
+    jobs2 = JobsTab(); jobs2.restore(st)
+    assert jobs2.search.text() == "acme" and jobs2._sort[0] == 2
+    jobs2.restore({"sort": "garbage", "filter": "nonsense"})              # a damaged file must not crash anything
 
 
 def test_run_tab_start_job_runs_one_job_and_refuses_when_busy(app, monkeypatch):

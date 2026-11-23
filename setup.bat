@@ -15,7 +15,7 @@ if not exist ".venv\Scripts\python.exe" (
 )
 echo Installing the packages (a few minutes the first time)...
 ".venv\Scripts\python.exe" -m pip install --upgrade pip
-".venv\Scripts\python.exe" -m pip install -r requirements.txt lxml
+".venv\Scripts\python.exe" -m pip install -r requirements.txt
 if errorlevel 1 ( echo The install failed. Check your internet connection and run this file again. & pause & exit /b 1 )
 echo Creating your private config files...
 ".venv\Scripts\python.exe" init_config.py

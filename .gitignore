@@ -44,3 +44,6 @@ dist/
 build/
 build_staging/
 *.spec
+
+# remembered window size and choices
+config/ui_state.json
