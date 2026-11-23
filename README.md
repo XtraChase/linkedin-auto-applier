@@ -1,5 +1,7 @@
 ﻿# LinkedIn Auto Applier
 
+[![tests](https://github.com/XtraChase/linkedin-auto-applier/actions/workflows/tests.yml/badge.svg)](https://github.com/XtraChase/linkedin-auto-applier/actions/workflows/tests.yml)
+
 A Windows desktop app that helps you with LinkedIn **Easy Apply**. It finds remote, US-based Easy Apply jobs that fit you, scores each one
 against **your own facts**, opens the application, fills in what it can, and then **stops at the Submit page so you read it and submit it yourself**.
 By default it never clicks Submit. An optional, off-by-default **auto-submit** mode can submit for you and move on to the next form (see [Auto-submit](#auto-submit-optional-off-by-default)).
