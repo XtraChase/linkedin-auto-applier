@@ -31,5 +31,5 @@ def check(no_ai=False, root=None, profile_path=None, key_present=None):
     if not facts.strip() or "First Last" in facts:
         problems.append("Your facts (Profile tab) are empty or still the template. The AI may only use what is written there.")
     if not has_resume(root):
-        problems.append("No resume found in the 'all resumes' folder (for example all resumes\default\resume.pdf). Forms that need one will be left for you.")
+        problems.append("No resume found in the 'all resumes' folder (for example all resumes\\default\\resume.pdf). Forms that need one will be left for you.")
     return problems
