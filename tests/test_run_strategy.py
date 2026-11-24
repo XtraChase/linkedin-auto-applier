@@ -18,6 +18,10 @@ def outcome(**kw):
     (dict(skips={"handled": 2, "not_easy_apply": 6, "title": 3}), "rules"),
     (dict(scored=6, good=0, best_score=24, skips={"handled": 9}), "below_cutoff"),
     (dict(scored=6, good=3, open_failed=3), "open_failures"),
+    (dict(scored=2, good=2, open_failed=2), "open_failures"),
+    # the real run that was misread: 47 jobs seen, 36 already handled, one new job whose form did not open
+    (dict(scored=1, good=1, open_failed=1, skips={"handled": 36, "not_remote": 11}), "handled"),
+    (dict(scored=1, good=1, open_failed=1, skips={"not_easy_apply": 8, "title": 3}), "rules"),
     (dict(scored=6, good=3, open_failed=0), "rules"),                                         # good jobs but nothing recorded as failing
 ])
 def test_classify(kw, cause):
@@ -44,7 +48,7 @@ def test_runs_that_say_nothing_about_the_search_do_not_count(tmp_path, extra):
 def test_open_failures_do_not_escalate_but_leave_a_hint(tmp_path):
     path = str(tmp_path / "fb.json")
     rs.record(path, outcome(skips={"handled": 9}))                                            # streak 1
-    fb = rs.record(path, outcome(scored=4, good=2, open_failed=2))
+    fb = rs.record(path, outcome(scored=4, good=2, open_failed=2))                            # two or more pages that would not open
     assert fb["streak"] == 1 and fb["last_cause"] == "open_failures" and "Check LinkedIn still works" in fb["last_hint"]
 
 

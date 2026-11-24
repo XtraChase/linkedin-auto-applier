@@ -6,7 +6,7 @@ Why a run opens nothing is not always the same, so the next run reacts to the CA
   no_cards       LinkedIn showed no results for the searches
   rules          the jobs seen were skipped by your own rules (not Easy Apply, not Remote, senior title, years, bad words ...)
   below_cutoff   jobs were scored but none reached your Minimum fit
-  open_failures  good jobs were found but their pages or forms would not open (a page problem, not a search problem)
+  open_failures  two or more good jobs were found but their pages or forms would not open (a page problem, not a search problem)
 
 Only SEARCH levers change (which titles, how deep, sort order, how recent). Your own quality and safety rules are never
 loosened: Minimum fit, years limit, senior-title skipping, blocked companies, bad words, Remote / United States / Easy Apply.
@@ -18,6 +18,7 @@ import json, os
 from dataclasses import dataclass, field
 
 MAX_LEVEL = 3                    # each empty run adds one lever, up to this; one run that opens a form resets it
+MIN_OPEN_FAILURES = 2            # fewer failed pages than this is put down to that one job, not to LinkedIn's layout
 MAX_TRIED_TERMS = 40
 MAX_RUNS_KEPT = 10
 GROUPS = {                       # lever groups, applied cumulatively in the order chosen for the cause
@@ -60,7 +61,7 @@ def classify(o):
         return "ok"
     skips = o.get("skips") or {}
     skipped = sum(int(skips.get(k, 0)) for k in SKIP_KEYS)
-    if o.get("good", 0) > 0 and o.get("open_failed", 0) > 0:
+    if o.get("good", 0) > 0 and o.get("open_failed", 0) >= MIN_OPEN_FAILURES:      # one job that would not open proves nothing about the page
         return "open_failures"
     if o.get("scored", 0) > 0 and o.get("good", 0) == 0:
         return "below_cutoff"

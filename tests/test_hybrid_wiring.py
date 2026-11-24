@@ -83,3 +83,46 @@ def test_below_cutoff_prints_a_suggestion_and_keeps_the_users_minimum(h, monkeyp
     out = capsys.readouterr().out
     assert "best fit last time was 24" in out and "not lowered automatically" in out
     assert h.args.min_fit == 30
+
+
+def test_card_list_is_read_again_when_linkedin_redraws_it(h, monkeypatch):
+    from selenium.common.exceptions import StaleElementReferenceException
+    monkeypatch.setattr(h.time, "sleep", lambda *_: None)
+    good = [MagicMock(), MagicMock()]
+    good[0].get_attribute.return_value = "job-card-component-ref-111"
+    good[1].get_attribute.return_value = "job-card-component-ref-222"
+    stale = MagicMock(); stale.get_attribute.side_effect = StaleElementReferenceException("gone")
+    h.d = MagicMock(); h.d.find_elements.side_effect = [[stale], [stale, good[1]], good]
+    assert h.list_card_ids() == ["111", "222"]                                                  # used to end the whole search
+    h.d.find_elements.side_effect = lambda *a: [stale]
+    with pytest.raises(StaleElementReferenceException):                                          # but not forever
+        h.list_card_ids(tries=3)
+
+
+def _form_driver(h, monkeypatch, dialog_answers):
+    monkeypatch.setattr(h.time, "sleep", lambda *_: None)
+    monkeypatch.setattr(h, "announce_job", lambda *a, **k: None)
+    monkeypatch.setattr(h, "visible", lambda els: els)
+    h.d = MagicMock(); h.d.execute_script.return_value = ""; h.d.find_elements.return_value = [MagicMock()]
+    answers = iter(dialog_answers)
+    monkeypatch.setattr(h, "dialog_text", lambda: next(answers, None))
+    h.args.manual = True                                      # stop after the form opens: this test is about opening it
+    return lambda: sum(1 for c in h.d.execute_script.call_args_list if "click()" in str(c.args[0]))
+
+
+def test_easy_apply_is_clicked_again_when_the_first_click_is_swallowed(h, monkeypatch, capsys):
+    clicks = _form_driver(h, monkeypatch, [None] * 20 + ["Apply to ALTEN"])                    # nothing after click 1, form after click 2
+    assert h.hand_over_form({"id": "1", "title": "t", "company": "c"}) == "form closed, not submitted"
+    assert clicks() == 2 and "clicking it again" in capsys.readouterr().out
+
+
+def test_form_that_never_opens_is_reported_after_three_clicks(h, monkeypatch, capsys):
+    clicks = _form_driver(h, monkeypatch, [])
+    assert h.hand_over_form({"id": "1", "title": "t", "company": "c"}) == "form did not open"
+    assert clicks() == 3 and "no application form appeared" in capsys.readouterr().out
+
+
+def test_no_button_still_reports_no_easy_apply_button(h, monkeypatch):
+    clicks = _form_driver(h, monkeypatch, [])
+    monkeypatch.setattr(h, "visible", lambda els: [])
+    assert h.hand_over_form({"id": "1", "title": "t", "company": "c"}) == "no Easy Apply button" and clicks() == 0

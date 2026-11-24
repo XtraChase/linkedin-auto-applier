@@ -246,24 +246,34 @@ def announce_job(job, desc="", about=""):
 def hand_over_form(job, desc="", about=""):
     """Click Easy Apply, fill the form from your config + AI, stop at the Submit page. Submits only with the opt-in --auto-submit."""
     announce_job(job, desc, about)
-    clicked = False
-    for attempt in range(5):                 # LinkedIn redraws the pane right after load, so re-find the button each try
-        try:
-            btns = visible(d.find_elements(By.CSS_SELECTOR, APPLY_BTN_CSS))
-            if not btns:
-                time.sleep(1.5); continue
-            d.execute_script("arguments[0].scrollIntoView({block:'center'}); arguments[0].click();", btns[0])
-            clicked = True; break
-        except (InvalidSessionIdException, NoSuchWindowException):
-            raise
+    opened_form = False
+    for click_round in range(3):             # a click can be swallowed while LinkedIn redraws the pane: click again (only once no form is showing)
+        clicked = False
+        for attempt in range(5):             # re-find the button each try, because the pane is redrawn right after load
+            try:
+                btns = visible(d.find_elements(By.CSS_SELECTOR, APPLY_BTN_CSS))
+                if not btns:
+                    time.sleep(1.5); continue
+                d.execute_script("arguments[0].scrollIntoView({block:'center'}); arguments[0].click();", btns[0])
+                clicked = True; break
+            except (InvalidSessionIdException, NoSuchWindowException):
+                raise
+            except Exception:
+                time.sleep(1.5)
+        if not clicked:
+            return "no Easy Apply button"
+        for _ in range(20):
+            if dialog_text() is not None: opened_form = True; break
+            time.sleep(0.5)
+        if opened_form: break
+        if click_round < 2: print("   (the form did not appear after clicking Easy Apply; clicking it again)")
+    if not opened_form:
+        try:                                  # say what the page shows instead, so a pattern can be spotted
+            seen = d.execute_script("const x = document.querySelector('[role=dialog],[role=alertdialog],[aria-modal=true]'); return x ? x.innerText.slice(0, 200) : '';") or ""
+            seen = re.sub(r"\s+", " ", seen) or "none"
+            print(f"   (no application form appeared. Page: {(d.current_url or '').split('?')[0]}; popup text: {seen})")
         except Exception:
-            time.sleep(1.5)
-    if not clicked:
-        return "no Easy Apply button"
-    for _ in range(20):
-        if dialog_text() is not None: break
-        time.sleep(0.5)
-    else:
+            pass
         return "form did not open"
     if not args.manual:
         if args.auto_submit:
@@ -288,6 +298,21 @@ def hand_over_form(job, desc="", about=""):
 # =============================================================================================
 # SMART MODE: AI picks search titles, scans results (Remote + US + Easy Apply), scores fit, applies best-first
 # =============================================================================================
+def list_card_ids(tries=5):
+    """The job ids of the cards on the results page. LinkedIn redraws the list while it loads, which makes a card go stale
+    between finding it and reading it; that used to end the whole search, so read the list again instead."""
+    for attempt in range(tries):
+        try:
+            ids = []
+            for c in d.find_elements(By.CSS_SELECTOR, CARD_CSS):
+                cid = c.get_attribute("componentkey").rsplit("-", 1)[-1]
+                if cid not in ids: ids.append(cid)
+            return ids
+        except StaleElementReferenceException:
+            if attempt == tries - 1: raise
+            time.sleep(0.6)
+
+
 def scan_term(term, limit, done_ids, seen_all):
     """Yield (job, desc, about) for jobs on this search that pass the hard filters."""
     t_load = time.time()
@@ -296,10 +321,7 @@ def scan_term(term, limit, done_ids, seen_all):
     print(f"   (results loaded in {time.time() - t_load:.0f}s)")
     examined, seen_here = 0, set()
     while examined < limit:
-        card_ids = []
-        for c in d.find_elements(By.CSS_SELECTOR, CARD_CSS):
-            cid = c.get_attribute("componentkey").rsplit("-", 1)[-1]
-            if cid not in card_ids: card_ids.append(cid)
+        card_ids = list_card_ids()
         if not card_ids:
             if not seen_here: STATS["empty_searches"] += 1
             print("  No job cards found (no results, or the page layout changed)."); return
@@ -364,8 +386,11 @@ def scan_term(term, limit, done_ids, seen_all):
             # a script click, after scrolling it into view: LinkedIn overlays (job-alert bar, chat) can block a normal click
             d.execute_script("arguments[0].scrollIntoView({block:'center'}); arguments[0].click();", nxt[0])
             for _ in range(40):                         # wait (up to ~12 s) for the next page of results to replace the list
-                now = d.find_elements(By.CSS_SELECTOR, CARD_CSS)
-                if now and now[0].get_attribute("componentkey").rsplit("-", 1)[-1] != first: break
+                try:
+                    now = d.find_elements(By.CSS_SELECTOR, CARD_CSS)
+                    if now and now[0].get_attribute("componentkey").rsplit("-", 1)[-1] != first: break
+                except StaleElementReferenceException:       # the list was redrawn between finding and reading: look again
+                    pass
                 time.sleep(0.3)
             continue
         return
@@ -421,7 +446,9 @@ def safe_scan(term, limit, done_ids, seen_all):
     except (InvalidSessionIdException, NoSuchWindowException, Blocked):
         raise
     except Exception as e:
-        print(f'   (the search for "{term}" stopped early: {type(e).__name__}; moving on to the next title)')
+        import traceback
+        where = traceback.extract_tb(e.__traceback__)[-1]          # say where, so a repeat is easy to track down
+        print(f'   (the search for "{term}" stopped early: {type(e).__name__} at {os.path.basename(where.filename)}:{where.lineno}; moving on to the next title)')
 
 
 def open_job(job, direct=False):
