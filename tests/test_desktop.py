@@ -224,6 +224,16 @@ def test_jobs_tab_add_from_link(app, monkeypatch):
     assert got == [("66666666", "Done Job", "D")]
 
 
+def test_run_tab_adapt_option_is_on_by_default_remembered_and_passed_on(app):
+    from desktop.tabs import RunTab
+    tab = RunTab(BotRunner())
+    assert tab.adapt.isChecked() and "--no-adapt" not in tab.args()
+    tab.adapt.setChecked(False)
+    assert "--no-adapt" in tab.args() and tab.state()["adapt"] is False
+    other = RunTab(BotRunner()); other.restore(tab.state())
+    assert not other.adapt.isChecked()
+
+
 def test_main_window_add_from_link_starts_single_job_run(app, monkeypatch):
     from desktop.main_window import MainWindow
     _fake_jobs(monkeypatch)

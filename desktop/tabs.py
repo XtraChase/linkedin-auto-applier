@@ -24,6 +24,7 @@ def open_folder(path):
 # ====================================================================================== Run
 STATUS_RULES = [                                   # (text in the bot's output, status line to show)
     ("Logging in", "Signing in to LinkedIn..."),
+    ("takes a different approach", "The last run opened nothing, so this run searches differently..."),
     ("Searching", "Searching LinkedIn..."),
     ("RANKED", "Jobs ranked. Opening the best fit..."),
     (">>> Applying to", "Opening the next job..."),
@@ -77,6 +78,9 @@ class RunTab(QWidget):
         self.list_only = QCheckBox("List and rank only (open no forms)")
         self.retry_low = QCheckBox("Score earlier low-fit jobs again")
         self.no_ai = QCheckBox("No AI answers (use only my saved answers)")
+        self.adapt = QCheckBox("Try a different search after a run that opens nothing"); self.adapt.setChecked(True)
+        self.adapt.setToolTip("When a run opens no forms, the next run uses new search titles, looks deeper and widens the search. "
+                              "Your own rules (Minimum fit, years, senior titles, Remote, Easy Apply) are never loosened.")
         self.auto_submit = QCheckBox("Submit automatically and move on to the next form")
         self.auto_submit.setToolTip("OFF by default. When ON the bot clicks Submit for you instead of waiting. You are responsible for every application it sends.")
         self.pause_review = QCheckBox("Still stop and wait for me when an answer needs a look"); self.pause_review.setChecked(True)
@@ -92,7 +96,7 @@ class RunTab(QWidget):
         checks = QGridLayout(); checks.setHorizontalSpacing(28); checks.setVerticalSpacing(6)
         checks.addWidget(self.list_only, 0, 0); checks.addWidget(self.retry_low, 0, 1)
         checks.addWidget(self.no_ai, 1, 0); checks.addWidget(self.auto_submit, 1, 1)
-        checks.addWidget(self.pause_review, 2, 1)
+        checks.addWidget(self.adapt, 2, 0); checks.addWidget(self.pause_review, 2, 1)
         checks.setColumnStretch(2, 1)
         inner.addLayout(checks)
 
@@ -152,6 +156,7 @@ class RunTab(QWidget):
         if self.list_only.isChecked(): a.append("--list-only")
         if self.retry_low.isChecked(): a.append("--retry-low")
         if self.no_ai.isChecked(): a.append("--no-ai")
+        if not self.adapt.isChecked(): a.append("--no-adapt")
         if self.auto_submit.isChecked() and not self.list_only.isChecked():
             a.append("--auto-submit")
             if not self.pause_review.isChecked(): a.append("--no-review-pause")
@@ -171,7 +176,7 @@ class RunTab(QWidget):
         self.pause_review.setEnabled(on)
 
     RUN_FIELDS = ("max_jobs", "min_fit", "candidates")
-    RUN_FLAGS = ("list_only", "retry_low", "no_ai")          # auto_submit is deliberately NOT remembered: it must be turned on each time
+    RUN_FLAGS = ("list_only", "retry_low", "no_ai", "adapt")          # auto_submit is deliberately NOT remembered: it must be turned on each time
 
     def state(self):
         s = {k: getattr(self, k).value() for k in self.RUN_FIELDS}
@@ -218,7 +223,7 @@ class RunTab(QWidget):
 
     def _running(self, on):
         self.start_btn.setEnabled(not on); self.stop_btn.setEnabled(on)
-        for w in (self.max_jobs, self.min_fit, self.candidates, self.list_only, self.retry_low, self.no_ai, self.auto_submit): w.setEnabled(not on)
+        for w in (self.max_jobs, self.min_fit, self.candidates, self.list_only, self.retry_low, self.no_ai, self.adapt, self.auto_submit): w.setEnabled(not on)
         self.pause_review.setEnabled(not on and self.auto_submit.isChecked())
 
     def open_listing(self):

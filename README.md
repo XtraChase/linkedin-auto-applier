@@ -86,6 +86,13 @@ When you press Start the app first checks that an AI key, your facts and a resum
 
 The window size, the numbers and ticks in *This run* (except auto-submit, which always starts off) and the Jobs sorting are remembered between launches.
 
+**If a run opens no forms**, the next run takes a different approach (the box *Try a different search after a run that opens nothing* in the Run tab, on by default).
+The app records why the run came up empty (jobs already handled, no results, your rules skipped everything, nothing reached your Minimum fit, or good jobs would not open)
+and adds one change per empty run, up to three: new search titles it has not used before with a deeper look at each search, then results sorted by relevance instead of newest first,
+then your config titles and postings from any date. One run that opens a form puts everything back to normal. Only the *search* changes. Your own rules (Minimum fit, years limit,
+senior titles, Remote, United States, Easy Apply) are never loosened; when they were the reason, the log says so and suggests what you could change. If good jobs were found but their pages
+would not open, the search is left alone (that points at LinkedIn's page layout; use *Check LinkedIn still works*). The record is `all excels\run_feedback.json`; `--no-adapt` turns it off for a run.
+
 Tips: start with *List and rank only* to see what it finds without opening any forms; keep *Forms to open* small until you trust the answers; raise *Minimum fit* if you get weak matches.
 
 ## Auto-submit (optional, off by default)

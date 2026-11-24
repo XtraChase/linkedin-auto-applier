@@ -18,7 +18,7 @@ SAFE_CONFIG = ["__init__.py", "_overrides.py", "settings.py", "search.py", "secr
 
 # scripts the exe runs as workers: PyInstaller only sees them if they are listed as hidden imports
 WORKERS = ["cover_letter_pdf", "hybrid_apply", "health_check", "runAiBot", "migrate_secrets", "init_config", "form_filler", "ai_answers", "answer_audit",
-           "answer_memory", "app_settings", "app_paths", "secure_store", "li_selectors", "requirements_check"]
+           "answer_memory", "app_settings", "app_paths", "secure_store", "li_selectors", "requirements_check", "job_lookup", "run_strategy"]
 SUBMODULES = ["langchain", "langchain_core", "langchain_openai", "langchain_google_genai", "langgraph", "openai", "google.genai", "tiktoken_ext", "keyring.backends", "modules"]
 COLLECT_ALL = ["reportlab", "selenium", "undetected_chromedriver", "pyautogui", "pymsgbox", "pyscreeze", "pytweening", "pygetwindow", "tiktoken", "certifi"]
 

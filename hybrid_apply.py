@@ -43,6 +43,7 @@ ap.add_argument("--daily-cap", type=int, default=SETTINGS["daily_cap"], help="st
 ap.add_argument("--any-level", action="store_true", help="smart mode: don't limit to entry-level / associate postings")
 ap.add_argument("--auto-submit", action="store_true", help="OPT-IN: click Submit for you when the application has nothing that needs a look, then move on to the next form")
 ap.add_argument("--no-review-pause", action="store_true", help="with --auto-submit: submit even when an answer is flagged (AI-written credential/legal answers, guessed years, blanks)")
+ap.add_argument("--no-adapt", action="store_true", help="smart mode: do not change the search approach after a run that opened no forms")
 ap.add_argument("--job", default="", help="apply to this one LinkedIn job (a job id or a pasted job link): fill the form and stop at Submit")
 ap.add_argument("--allow-senior", action="store_true", default=bool(SETTINGS["allow_senior"]), help="smart mode: don't skip Senior / Lead / Manager / Director titles")
 ap.add_argument("--max-years", type=int, default=SETTINGS["max_years"], help="smart mode: skip postings that require this many years or more (default 7)")
@@ -60,6 +61,12 @@ answerer = None
 HISTORY = os.path.join(HERE, "all excels", "hybrid_history.csv")
 os.makedirs(os.path.dirname(HISTORY), exist_ok=True)
 
+import collections
+SKIPS = collections.Counter()  # why jobs were skipped this run (see run_strategy.py)
+STATS = collections.Counter()  # other facts about this run, for the next run's approach
+ANY_TIME = RELEVANCE = False   # search levers a run that follows an empty one may switch on (run_strategy.plan)
+FEEDBACK = os.path.join(HERE, "all excels", "run_feedback.json")
+
 DATE_MAP = {"Past 24 hours": "r86400", "Past week": "r604800", "Past month": "r2592000"}
 WT_MAP = {"On-site": "1", "Remote": "2", "Hybrid": "3"}
 EXP_MAP = {"Internship": "1", "Entry level": "2", "Associate": "3", "Mid-Senior level": "4", "Director": "5", "Executive": "6"}
@@ -70,12 +77,12 @@ def build_url(term):
     q = [f"keywords={quote(term)}"]
     if S.search_location.strip():          q.append(f"location={quote(S.search_location.strip())}")
     if S.easy_apply_only:                  q.append("f_AL=true")
-    if S.date_posted in DATE_MAP:          q.append(f"f_TPR={DATE_MAP[S.date_posted]}")
+    if S.date_posted in DATE_MAP and not ANY_TIME: q.append(f"f_TPR={DATE_MAP[S.date_posted]}")
     if S.on_site:                          q.append("f_WT=" + ",".join(WT_MAP[x] for x in S.on_site if x in WT_MAP))
     levels = [] if args.any_level else (S.experience_level or SETTINGS["experience_levels"])
     if levels:                             q.append("f_E=" + ",".join(EXP_MAP[x] for x in levels if x in EXP_MAP))
     if S.job_type:                         q.append("f_JT=" + ",".join(JT_MAP[x] for x in S.job_type if x in JT_MAP))
-    if S.sort_by == "Most recent" or SETTINGS["sort_recent"]: q.append("sortBy=DD")
+    if (S.sort_by == "Most recent" or SETTINGS["sort_recent"]) and not RELEVANCE: q.append("sortBy=DD")
     return "https://www.linkedin.com/jobs/search/?" + "&".join(q)
 
 
@@ -294,6 +301,7 @@ def scan_term(term, limit, done_ids, seen_all):
             cid = c.get_attribute("componentkey").rsplit("-", 1)[-1]
             if cid not in card_ids: card_ids.append(cid)
         if not card_ids:
+            if not seen_here: STATS["empty_searches"] += 1
             print("  No job cards found (no results, or the page layout changed)."); return
         for cid in card_ids:
             if examined >= limit: return
@@ -308,26 +316,26 @@ def scan_term(term, limit, done_ids, seen_all):
             seen_here.add(cid); seen_all.add(cid); examined += 1
             tag = f'{job["title"]} | {job["company"]} | {job["location"]}'
             if cid in done_ids or job["applied"]:
-                print(f"   - skip (already handled): {tag}"); continue
+                SKIPS["handled"] += 1; print(f"   - skip (already handled): {tag}"); continue
             if "easy apply" not in job["card_text"].lower():
-                print(f"   - skip (not Easy Apply): {tag}"); continue
+                SKIPS["not_easy_apply"] += 1; print(f"   - skip (not Easy Apply): {tag}"); continue
             if "remote" not in job["location"].lower():
-                print(f"   - skip (not marked Remote): {tag}"); continue
+                SKIPS["not_remote"] += 1; print(f"   - skip (not marked Remote): {tag}"); continue
             why = None if args.allow_senior else title_blocker(job["title"])
             if why:
-                print(f"   - skip ({why}): {tag}"); log_row(job, f"skipped: {why}"); done_ids.add(cid); continue
+                SKIPS["title"] += 1; print(f"   - skip ({why}): {tag}"); log_row(job, f"skipped: {why}"); done_ids.add(cid); continue
             blocked = next((b for b in SETTINGS["blocked_companies"] if b and b.lower() in job["company"].lower()), None)
             if blocked:
-                print(f'   - skip (blocked company "{blocked}"): {tag}'); log_row(job, f'skipped: blocked company "{blocked}"'); done_ids.add(cid); continue
+                SKIPS["blocked_company"] += 1; print(f'   - skip (blocked company "{blocked}"): {tag}'); log_row(job, f'skipped: blocked company "{blocked}"'); done_ids.add(cid); continue
             dup_key = (job["title"].strip().lower(), job["company"].strip().lower())
             if dup_key in SEEN_POSTINGS:             # same role at the same company in another city: look at it once
-                print(f"   - skip (duplicate posting): {tag}"); done_ids.add(cid); continue
+                SKIPS["duplicate"] += 1; print(f"   - skip (duplicate posting): {tag}"); done_ids.add(cid); continue
             SEEN_POSTINGS.add(dup_key)
             c = SCORE_CACHE.get(cid)
             if c:                                   # scored in an earlier run: no need to open and re-score it
                 blk = hard_blockers(c["description"], args.max_years)
                 if blk:
-                    print(f"   - skip ({'; '.join(blk)}): {tag}"); log_row(job, f"skipped: {'; '.join(blk)}"); done_ids.add(cid); continue
+                    SKIPS["hard_blockers"] += 1; print(f"   - skip ({'; '.join(blk)}): {tag}"); log_row(job, f"skipped: {'; '.join(blk)}"); done_ids.add(cid); continue
                 job.update(score=c["score"], reason=c["reason"])
                 yield job, c["description"], c["about"]; continue
             try:
@@ -340,14 +348,14 @@ def scan_term(term, limit, done_ids, seen_all):
                 continue
             hit = has_word(desc, S.bad_words)
             if hit:
-                print(f'   - skip (posting says "{hit}"): {tag}'); log_row(job, f'skipped: "{hit}"'); done_ids.add(cid); continue
+                SKIPS["bad_words"] += 1; print(f'   - skip (posting says "{hit}"): {tag}'); log_row(job, f'skipped: "{hit}"'); done_ids.add(cid); continue
             blk = hard_blockers(desc, args.max_years)
             if blk:
-                print(f"   - skip ({'; '.join(blk)}): {tag}"); log_row(job, f"skipped: {'; '.join(blk)}"); done_ids.add(cid); continue
+                SKIPS["hard_blockers"] += 1; print(f"   - skip ({'; '.join(blk)}): {tag}"); log_row(job, f"skipped: {'; '.join(blk)}"); done_ids.add(cid); continue
             good = has_word(about, S.about_company_good_words)
             bad = None if good else has_word(about + " " + job["company"], S.about_company_bad_words)
             if bad:
-                print(f'   - skip (company text "{bad}"): {tag}'); log_row(job, f'skipped: company "{bad}"'); done_ids.add(cid); continue
+                SKIPS["company_text"] += 1; print(f'   - skip (company text "{bad}"): {tag}'); log_row(job, f'skipped: company "{bad}"'); done_ids.add(cid); continue
             yield job, desc, about
         # finished this page of cards: next page of results
         nxt = visible(d.find_elements(By.CSS_SELECTOR, NEXT_PAGE_CSS))
@@ -486,29 +494,61 @@ def apply_one(job_id, done_ids):
     print("\nDone.")
 
 
+RUN_TERMS = []                 # the search titles this run used (remembered so the next empty run can pick different ones)
+
+
 def smart_main(done_ids):
+    """Smart mode, with a different approach after a run that opened no forms (see run_strategy.py), and a record of how this run went."""
+    import run_strategy
+    global ANY_TIME, RELEVANCE
+    avoid = []
+    if not args.no_adapt:
+        p = run_strategy.plan(run_strategy.load(FEEDBACK), args.per_term, args.candidates, args.ai_terms)
+        for line in run_strategy.describe(p): print(line)
+        args.per_term, args.candidates, args.ai_terms = p.per_term, p.candidates, p.ai_terms
+        ANY_TIME, RELEVANCE, avoid = p.any_time, p.relevance, p.avoid_terms
+        if p.config_terms: args.config_terms = True
+    _smart_main(done_ids, avoid)
+    if args.no_adapt: return
+    outcome = {"time": datetime.now().isoformat(timespec="seconds"), "skips": {k: int(v) for k, v in SKIPS.items()}, "terms": list(RUN_TERMS),
+               "min_fit": args.min_fit, "scored": STATS["scored"], "good": STATS["good"], "opened": STATS["opened"],
+               "open_failed": STATS["open_failed"], "searches": STATS["searches"], "empty_searches": STATS["empty_searches"],
+               "best_score": STATS["best_score"] if STATS["scored"] else None,
+               "list_only": bool(STATS["list_only"]), "capped": bool(STATS["capped"]), "quit": bool(STATS["quit"]),
+               "ai_failed": bool(STATS["score_failed"]) and STATS["score_failed"] >= STATS["scored"]}
+    fb = run_strategy.record(FEEDBACK, outcome)
+    if fb["last_cause"] and run_strategy.counts_as_empty(outcome):
+        if fb["last_cause"] == "open_failures":
+            print("\n(This run found good jobs but none would open. That points at the LinkedIn page, not your search, so the search approach is not changed.)")
+        else:
+            print(f"\n(This run opened no forms ({fb['last_cause'].replace('_', ' ')}). The next run will take a different approach.)")
+        if fb["last_hint"]: print("   " + fb["last_hint"])
+
+
+def _smart_main(done_ids, avoid=()):
     SCORE_CACHE.update(load_cache())
     # the AI chooses the search titles from your profile (mostly drafting / CAD); config titles only if asked or as a fallback
     terms = list(args.terms) if args.terms else (list(S.search_terms) if args.config_terms else [])
     if args.ai_terms > 0:
-        extra = answerer.suggest_terms(args.ai_terms, existing=terms)
+        extra = answerer.suggest_terms(args.ai_terms, existing=terms + list(avoid))
         if extra: print("AI chose these search titles:", extra)
         terms += extra
     if not terms:
         terms = list(S.search_terms); print("AI gave no titles; using your config titles:", terms)
-    print(f"\nSearching {len(terms)} titles (Remote, {S.search_location}, Easy Apply, {S.date_posted}); up to {args.candidates} jobs scored.\n")
+    RUN_TERMS[:] = terms
+    print(f"\nSearching {len(terms)} titles (Remote, {S.search_location}, Easy Apply, {'any date' if ANY_TIME else S.date_posted}); up to {args.candidates} jobs scored.\n")
     cands, seen_all = [], set()
     quota = max(3, -(-args.candidates // len(terms)))      # spread the budget so every title (incl. the AI's) gets searched
     for term in terms:
         if len(cands) >= args.candidates: break
         print(f'===== "{term}" =====')
-        n_term = 0
+        n_term = 0; STATS["searches"] += 1
         for job, desc, about in safe_scan(term, args.per_term, done_ids, seen_all):
             t0 = time.time()
             job.update(description=desc, about=about, term=term)
             if "score" not in job:
                 job["score"], job["reason"] = answerer.score_job(job)
-                if job["score"] < 0: job["score"] = 0
+                if job["score"] < 0: job["score"] = 0; STATS["score_failed"] += 1
                 from ai_answers import SCORE_VERSION
                 SCORE_CACHE[job["id"]] = {"score": job["score"], "reason": job["reason"], "description": desc[:6000],
                                           "about": about[:1500], "title": job["title"], "company": job["company"],
@@ -519,6 +559,7 @@ def smart_main(done_ids):
             if len(cands) >= args.candidates or n_term >= quota: break
     cands.sort(key=lambda j: -j["score"])
     good = [j for j in cands if j["score"] >= args.min_fit]
+    STATS["scored"], STATS["good"], STATS["best_score"] = len(cands), len(good), (cands[0]["score"] if cands else 0)
     print(f"\n===== RANKED: {len(cands)} jobs scored, {len(good)} at or above fit {args.min_fit} =====")
     for i, j in enumerate(cands, 1):
         mark = "*" if j["score"] >= args.min_fit else " "
@@ -530,10 +571,12 @@ def smart_main(done_ids):
             log_row(j, f'low fit {j["score"]}: {j["reason"][:120]}'); done_ids.add(j["id"])
     if args.list_only:
         for j in good: log_row(j, f'listed, fit {j["score"]}'); done_ids.add(j["id"])
+        STATS["list_only"] = 1
         print("\n(list-only: no forms opened)"); return
     left = args.daily_cap - applied_today()
     if left <= 0 and good:
         print(f"\nDaily cap reached: {applied_today()} applications submitted today (cap {args.daily_cap}). Not opening more forms; try again tomorrow.")
+        STATS["capped"] = 1
         return
     limit = min(args.max_jobs, left) if args.daily_cap > 0 else args.max_jobs
     opened = 0
@@ -548,6 +591,7 @@ def smart_main(done_ids):
             print(f"   (could not open this job's page: {type(e).__name__})"); page_ok = False
         if not page_ok:
             print("   could not open this job's page with an Easy Apply button; skipping it")
+            STATS["open_failed"] += 1
             log_row(j, "could not open job page"); done_ids.add(j["id"]); continue
         try:
             result = hand_over_form(j, j["description"], j["about"])
@@ -557,12 +601,13 @@ def smart_main(done_ids):
             result = f"error: {type(e).__name__}"
         print("   result:", result)
         quit_now = False
+        if result in ("no Easy Apply button", "form did not open") or result.startswith("error"): STATS["open_failed"] += 1
         if result not in ("no Easy Apply button", "form did not open") and not result.startswith("error"):
-            opened += 1
+            opened += 1; STATS["opened"] = opened
             more = opened < limit and any(x["score"] >= args.min_fit and x["id"] not in done_ids and x["id"] != j["id"] for x in good)
             result, quit_now = ask_outcome(result, more)
         log_row(j, f'{result} (fit {j["score"]})'); done_ids.add(j["id"]); set_status(j["id"], result)
-        if quit_now: return
+        if quit_now: STATS["quit"] = 1; return
         if args.auto_submit and result == "applied": pause(4, 9)      # unhurried between automatic submissions
     print("\nDone. Forms opened:", opened, "| history:", HISTORY)
 
@@ -660,15 +705,17 @@ def main():
     print("\nDone. Forms opened:", forms_opened, "| history:", HISTORY)
 
 
-try:
-    main()
-except KeyboardInterrupt:
-    print("\nStopped by you.")
-except Blocked as e:
-    print(f"\nSTOPPED: {e}.\nSolve it in the bot's Chrome window if you can, wait a while, then start again. The bot does not try to get past security checks.")
-except (InvalidSessionIdException, NoSuchWindowException):
-    print("\nThe bot's Chrome window was closed, so the script stopped. Start it again to continue.")
-finally:
-    write_report()
-    try: d.quit()
-    except Exception: pass
+# (the guard lets the tests import this file without starting a run)
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nStopped by you.")
+    except Blocked as e:
+        print(f"\nSTOPPED: {e}.\nSolve it in the bot's Chrome window if you can, wait a while, then start again. The bot does not try to get past security checks.")
+    except (InvalidSessionIdException, NoSuchWindowException):
+        print("\nThe bot's Chrome window was closed, so the script stopped. Start it again to continue.")
+    finally:
+        write_report()
+        try: d.quit()
+        except Exception: pass
