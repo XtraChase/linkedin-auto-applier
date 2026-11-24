@@ -43,6 +43,7 @@ class MainWindow(QMainWindow):
             try: self.restoreGeometry(QByteArray.fromBase64(geo.encode("ascii")))
             except Exception: pass
         self.jobs_tab.apply_requested.connect(self._auto_apply)
+        self.jobs_tab.link_requested.connect(self._add_from_link)
         self.run_tab.run_finished.connect(self.jobs_tab.refresh)
         self.run_tab.run_finished.connect(self.answers_tab.refresh)
 
@@ -53,6 +54,14 @@ class MainWindow(QMainWindow):
         """Jobs tab 'Auto apply': start the single-job run and show the Run tab so you can follow it."""
         self.tabs.setCurrentWidget(self.run_tab)
         self.run_tab.start_job(job_id, title, company)
+
+    def _add_from_link(self, job_id, title, company):
+        """Jobs tab 'Add and auto apply': same single-job run; the pasted link is cleared once the run has started."""
+        self.tabs.setCurrentWidget(self.run_tab)
+        if self.run_tab.start_job(job_id, title, company):
+            self.jobs_tab.link_edit.clear()
+        else:
+            self.tabs.setCurrentWidget(self.jobs_tab)          # a run is going or setup was declined: keep the link so you can retry
 
     def showEvent(self, event):
         super().showEvent(event)

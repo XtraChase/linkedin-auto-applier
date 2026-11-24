@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComb
 
 import app_settings
 import secure_store
+from job_lookup import parse_job_link
 from desktop import data
 from desktop import preflight
 from desktop.runner import BotRunner, ROOT
@@ -289,9 +290,17 @@ class RunTab(QWidget):
 # ====================================================================================== Jobs
 class JobsTab(QWidget):
     apply_requested = Signal(str, str, str)        # job id, title, company
+    link_requested = Signal(str, str, str)         # job id, title, company of a job added from a pasted link (title may be empty)
 
     def __init__(self):
         super().__init__()
+        self.link_edit = QLineEdit(); self.link_edit.setPlaceholderText("Paste a LinkedIn job link here to add it and auto apply...")
+        self.link_edit.setClearButtonEnabled(True)
+        self.link_btn = QPushButton("Add and auto apply")
+        self.link_btn.setToolTip("Adds the job to this list, opens it, fills the form and stops at the Submit page for you to review")
+        self.link_msg = QLabel(""); self.link_msg.setObjectName("status")
+        link_row = QHBoxLayout(); link_row.addWidget(self.link_edit, 1); link_row.addWidget(self.link_btn)
+        self.link_edit.returnPressed.connect(self.add_from_link); self.link_btn.clicked.connect(self.add_from_link)
         self.filter = QComboBox(); self.filter.addItems(["All", "Submitted", "Opened, not submitted", "Skipped or low fit", "Scored only"])
         self.refresh_btn = QPushButton("Refresh")
         self.mark_btn = QPushButton("Mark selected as submitted")
@@ -306,9 +315,10 @@ class JobsTab(QWidget):
         for col, width in ((0, 56), (1, 250), (2, 150), (3, 210), (4, 112)):
             h.setSectionResizeMode(col, QHeaderView.Interactive); self.table.setColumnWidth(col, width)
         self.table.verticalHeader().setVisible(False); self.table.verticalHeader().setDefaultSectionSize(40)
-        hint = QLabel("Double-click a job to open it on LinkedIn. Auto apply fills the form and stops at Submit for you to review.")
-        lay = QVBoxLayout(self); lay.addLayout(top); lay.addWidget(self.table, 1); lay.addWidget(hint)
-        self._sort = (0, Qt.DescendingOrder)                  # best fit first, like the log
+        hint = QLabel("Double-click a job to open it on LinkedIn. Auto apply fills the form and stops at Submit for you to review. Have a job link? Paste it above.")
+        lay = QVBoxLayout(self); lay.addLayout(link_row); lay.addWidget(self.link_msg); lay.addLayout(top); lay.addWidget(self.table, 1); lay.addWidget(hint)
+        self.link_msg.setVisible(False)
+        self._sort = (0, Qt.DescendingOrder)                # best fit first, like the log
         h.setSectionsClickable(True); h.setSortIndicatorShown(True); h.setSortIndicator(0, Qt.DescendingOrder)
         h.sectionClicked.connect(self._sort_by)
         self.search.textChanged.connect(self.refresh)
@@ -377,6 +387,25 @@ class JobsTab(QWidget):
             else:
                 self.table.removeCellWidget(r, 4)
         self.count.setText(f"{len(self._jobs)} jobs")
+
+    def add_from_link(self):
+        """Take the pasted LinkedIn job link, check it, and ask for a single-job auto apply (it stops at Submit)."""
+        job_id = parse_job_link(self.link_edit.text())
+        if not job_id:
+            self._link_note("That does not look like a LinkedIn job link. Copy it from the job page, for example https://www.linkedin.com/jobs/view/1234567890/")
+            return
+        known = next((j for j in data.load_jobs() if j["id"] == job_id), None)
+        if known and self._bucket(known["status"]) == "Submitted":
+            ans = QMessageBox.question(self, "Already submitted",
+                                       f"This job is already recorded as submitted:\n\n{known['title']} | {known['company']}\n\nOpen it again anyway?",
+                                       QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if ans != QMessageBox.Yes:
+                return
+        self._link_note("")
+        self.link_requested.emit(job_id, (known or {}).get("title", ""), (known or {}).get("company", ""))
+
+    def _link_note(self, text):
+        self.link_msg.setText(text); self.link_msg.setVisible(bool(text))
 
     def mark_submitted(self):
         rows = sorted({i.row() for i in self.table.selectedItems()})

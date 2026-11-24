@@ -70,7 +70,12 @@ While a job is open, **Open job listing** shows the posting in your browser and 
 **Jobs tab:** every job seen, best fit first. Click a column header to sort (click again to reverse) and use the search box to find a job by title, company or note. Double-click one to open it on LinkedIn. Every job you have not submitted has an **Auto apply** button: it runs the same
 fill-the-form flow for just that job and pauses at Submit. *Mark selected as submitted* fixes the record if you submitted something the log shows as not submitted.
 
-![Jobs tab with an Auto apply button on each unsubmitted job](docs/screenshots/jobs.png)
+**Found a job yourself?** Paste its LinkedIn link into the box at the top of the Jobs tab and click **Add and auto apply**. The app adds the job to the list, opens it,
+fills the form and stops at Submit, exactly like the Auto apply button. It reads the title and company from the page, gives the job a fit score (if an AI key is saved),
+and keeps it in the list afterwards. Links from the address bar, from a search page (`...currentJobId=...`) and from emails all work; the job must have an *Easy Apply* button.
+(From the command line: `start_hybrid.bat --job <link or job id>`.)
+
+![Jobs tab with a link box on top and an Auto apply button on each unsubmitted job](docs/screenshots/jobs.png)
 
 **Answers tab:** answers to reuse for questions that come up again (yours always win over the AI), and a list of what was filled on recent applications. Answers that deserve a second look
 (a guessed number of years, free text written by the AI) are highlighted.

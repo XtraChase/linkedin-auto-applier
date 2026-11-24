@@ -43,7 +43,7 @@ ap.add_argument("--daily-cap", type=int, default=SETTINGS["daily_cap"], help="st
 ap.add_argument("--any-level", action="store_true", help="smart mode: don't limit to entry-level / associate postings")
 ap.add_argument("--auto-submit", action="store_true", help="OPT-IN: click Submit for you when the application has nothing that needs a look, then move on to the next form")
 ap.add_argument("--no-review-pause", action="store_true", help="with --auto-submit: submit even when an answer is flagged (AI-written credential/legal answers, guessed years, blanks)")
-ap.add_argument("--job", default="", help="apply to this one LinkedIn job id (from the Jobs tab): fill the form and stop at Submit")
+ap.add_argument("--job", default="", help="apply to this one LinkedIn job (a job id or a pasted job link): fill the form and stop at Submit")
 ap.add_argument("--allow-senior", action="store_true", default=bool(SETTINGS["allow_senior"]), help="smart mode: don't skip Senior / Lead / Manager / Director titles")
 ap.add_argument("--max-years", type=int, default=SETTINGS["max_years"], help="smart mode: skip postings that require this many years or more (default 7)")
 args = ap.parse_args()
@@ -184,7 +184,7 @@ def has_word(text, words):
     return None
 
 
-from li_selectors import visible, CARD_CSS, NEXT_PAGE_CSS, APPLY_BTN_CSS, ABOUT_COMPANY_FMT, READ_CARD_JS, DESC_JS, DETAILS_FOR_JS, parse_card
+from li_selectors import visible, CARD_CSS, NEXT_PAGE_CSS, APPLY_BTN_CSS, ABOUT_COMPANY_FMT, READ_CARD_JS, DESC_JS, DETAILS_FOR_JS, JOB_META_JS, parse_card
 
 
 def pause(a=1.5, b=3.5):
@@ -416,10 +416,12 @@ def safe_scan(term, limit, done_ids, seen_all):
         print(f'   (the search for "{term}" stopped early: {type(e).__name__}; moving on to the next title)')
 
 
-def open_job(job):
-    """Load the search with this job selected in the details pane. Returns True when its Easy Apply button is there."""
+def open_job(job, direct=False):
+    """Load the search with this job selected in the details pane. Returns True when its Easy Apply button is there.
+    direct=True (a job that came from a pasted link) tries the job's own page first, since it may not be in any search."""
     jid = job["id"]
-    for url in (build_url(job["term"]) + f"&currentJobId={jid}", f"https://www.linkedin.com/jobs/view/{jid}/"):
+    urls = [build_url(job["term"]) + f"&currentJobId={jid}", f"https://www.linkedin.com/jobs/view/{jid}/"]
+    for url in (urls[::-1] if direct else urls):
         d.get(url)
         check_blocked()
         for _ in range(30):
@@ -432,19 +434,26 @@ def open_job(job):
 
 def apply_one(job_id, done_ids):
     """Auto apply to one specific job (the Jobs tab button): open it, fill the form, stop at Submit, ask what you did."""
-    from job_lookup import build_job, history_row
-    args.auto_submit = False                       # the Jobs tab button always pauses at Submit for you
+    from job_lookup import build_job, history_row, parse_job_meta
+    args.auto_submit = False                      # the Jobs tab button always pauses at Submit for you
     SCORE_CACHE.update(load_cache())
     job = build_job(job_id, SCORE_CACHE.get(job_id), history_row(job_id, HISTORY))
+    known = bool(job["title"])                     # False for a job that came from a pasted link: read it from its page
     score = job["score"] if job["score"] is not None else "-"
-    print(f">>> Applying to #1: [{score}] {job['title'] or job_id} | {job['company']}")
+    print(f">>> Applying to #1: [{score}] {job['title'] or 'LinkedIn job ' + job_id} | {job['company']}")
     if job["reason"]: print(f"    why: {job['reason'][:220]}")
+    if not known:
+        log_row(job, "added from a link")          # on the Jobs list from the start, even if the run is stopped
     try:
-        page_ok = open_job(job)
+        page_ok = open_job(job, direct=not known)
     except (InvalidSessionIdException, NoSuchWindowException, Blocked):
         raise
     except Exception as e:
         print(f"   (could not open this job's page: {type(e).__name__})"); page_ok = False
+    if not known and page_ok:
+        meta = parse_job_meta(d.execute_script(JOB_META_JS))
+        for k in ("title", "company", "location"): job[k] = job[k] or meta[k]
+        if job["title"]: print(f"   read the job: {job['title']} | {job['company']} | {job['location']}")
     if not page_ok:
         print("   could not open this job's page with an Easy Apply button. It may be closed, already applied to, or not Easy Apply.")
         log_row(job, "could not open job page"); return
@@ -453,7 +462,17 @@ def apply_one(job_id, done_ids):
         desc = d.execute_script(DESC_JS) or ""
         els = d.find_elements(By.CSS_SELECTOR, ABOUT_COMPANY_FMT.format(jid=job_id))
         about = els[0].text if els else ""
-        job["title"] = job["title"] or (d.title.split("|")[0].strip() if d.title else "")
+    if job["score"] is None and answerer is not None and desc:     # a new job gets a fit score like any other, shown in the Jobs list
+        job["description"], job["about"] = desc, about
+        job["score"], job["reason"] = answerer.score_job(job)
+        if job["score"] >= 0:
+            from ai_answers import SCORE_VERSION
+            SCORE_CACHE[job_id] = {"score": job["score"], "reason": job["reason"], "description": desc[:6000], "about": about[:1500],
+                                   "title": job["title"], "company": job["company"], "location": job["location"], "ts": time.time(), "v": SCORE_VERSION}
+            save_cache()
+            print(f"   fit score: {job['score']}  {job['reason'][:200]}")
+        else:
+            job["score"] = None
     try:
         result = hand_over_form(job, desc, about)
     except (InvalidSessionIdException, NoSuchWindowException, Blocked):
@@ -549,6 +568,12 @@ def smart_main(done_ids):
 
 
 def main():
+    if args.job:                                   # --job takes a job id or a pasted LinkedIn job link
+        from job_lookup import parse_job_link
+        args.job = parse_job_link(args.job)
+        if not args.job:
+            print("ERROR: that is not a LinkedIn job link or job id (expected something like https://www.linkedin.com/jobs/view/1234567890/)")
+            return
     done_ids = load_history()
     terms = args.terms or S.search_terms
     forms_opened = 0

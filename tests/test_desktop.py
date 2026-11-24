@@ -195,6 +195,56 @@ def test_run_tab_start_job_runs_one_job_and_refuses_when_busy(app, monkeypatch):
     assert tab.job_label.text() == "Some Job | Co"
 
 
+def test_jobs_tab_add_from_link(app, monkeypatch):
+    from desktop.tabs import JobsTab
+    from PySide6.QtWidgets import QMessageBox
+    _fake_jobs(monkeypatch)
+    tab = JobsTab()
+    got = []
+    tab.link_requested.connect(lambda i, t, c: got.append((i, t, c)))
+    tab.link_edit.setText("not a link"); tab.link_btn.click()
+    assert got == [] and not tab.link_msg.isHidden() and "LinkedIn job link" in tab.link_msg.text()
+    tab.link_edit.setText("https://www.linkedin.com/jobs/view/987654321/?trk=x"); tab.link_btn.click()          # a new job
+    assert got == [("987654321", "", "")] and tab.link_msg.isHidden()
+    tab.link_edit.setText("https://www.linkedin.com/jobs/view/13/")                                              # id too short to be real
+    got.clear(); tab.link_btn.click()
+    assert got == [] and not tab.link_msg.isHidden()
+    jobs = data.load_jobs()
+    jobs.append({"id": "55555555", "title": "Known Job", "company": "K", "status": "scored", "score": 60, "reason": "", "link": "k"})
+    jobs.append({"id": "66666666", "title": "Done Job", "company": "D", "status": "applied (fit 80)", "score": 80, "reason": "", "link": "d"})
+    monkeypatch.setattr(data, "load_jobs", lambda: jobs)
+    tab.link_edit.setText("55555555"); tab.link_btn.click()                       # a known job reuses its title and company
+    assert got == [("55555555", "Known Job", "K")]
+    got.clear()
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.No)        # already submitted: asks first
+    tab.link_edit.setText("66666666"); tab.link_btn.click()
+    assert got == []
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
+    tab.link_btn.click()
+    assert got == [("66666666", "Done Job", "D")]
+
+
+def test_main_window_add_from_link_starts_single_job_run(app, monkeypatch):
+    from desktop.main_window import MainWindow
+    _fake_jobs(monkeypatch)
+    w = MainWindow()
+    calls = []
+    monkeypatch.setattr("desktop.preflight.check", lambda **k: [])
+    monkeypatch.setattr(w.runner, "start", lambda script, args=(): calls.append((script, list(args))))
+    monkeypatch.setattr(w.runner, "is_running", lambda: False)
+    w.tabs.setCurrentWidget(w.jobs_tab)
+    w.jobs_tab.link_edit.setText("https://www.linkedin.com/jobs/view/4123456789/")
+    w.jobs_tab.link_btn.click()
+    assert w.tabs.currentWidget() is w.run_tab
+    assert calls == [("hybrid_apply.py", ["--job", "4123456789"])]
+    assert w.jobs_tab.link_edit.text() == "" and "4123456789" in w.run_tab.job_label.text()
+    monkeypatch.setattr(w.runner, "is_running", lambda: True)                     # a run is going: link kept, back on the Jobs tab
+    w.jobs_tab.link_edit.setText("4123456790"); w.jobs_tab.link_btn.click()
+    assert len(calls) == 1 and w.jobs_tab.link_edit.text() == "4123456790" and w.tabs.currentWidget() is w.jobs_tab
+    monkeypatch.setattr(w.runner, "is_running", lambda: False)                    # so closing does not ask about a run in progress
+    w.close()
+
+
 def test_main_window_auto_apply_switches_to_run_tab(app, monkeypatch):
     from desktop.main_window import MainWindow
     _fake_jobs(monkeypatch)

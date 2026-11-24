@@ -26,6 +26,26 @@ const h = [...document.querySelectorAll('h2')].find(x => x.innerText.trim() === 
 return h ? h.parentElement.parentElement.innerText : '';
 """
 
+JOB_META_JS = """
+// what the open job page says about itself: its structured data (JobPosting), the share title and the tab title
+let ld = {};
+for (const s of document.querySelectorAll('script[type="application/ld+json"]')) {
+  try {
+    let j = JSON.parse(s.textContent);
+    if (Array.isArray(j)) j = j.find(x => x && x['@type'] === 'JobPosting') || {};
+    if (j && j['@type'] === 'JobPosting') {
+      const loc = j.jobLocation && (Array.isArray(j.jobLocation) ? j.jobLocation[0] : j.jobLocation);
+      const addr = loc && loc.address || {};
+      ld = {title: j.title || '', company: j.hiringOrganization && j.hiringOrganization.name || '',
+            location: [addr.addressLocality, addr.addressRegion, addr.addressCountry].filter(Boolean).join(', ')};
+      break;
+    }
+  } catch (e) {}
+}
+const og = document.querySelector('meta[property="og:title"]');
+return {ld: ld, og: og ? og.content : '', doc: document.title || ''};
+"""
+
 DETAILS_FOR_JS = """
 // true once the right-hand pane shows THIS job (a JobDetails component keyed with its id) and the description text has rendered
 const id = arguments[0];
